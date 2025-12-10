@@ -11,6 +11,8 @@ A React-based web tool to build sprite atlases from uploaded images. Images are 
 - Automatically creates multiple atlases when images don't fit into a single sheet
 - Preview each atlas with pager controls
 - Live JSON metadata preview
+- Auto-pack: the app automatically packs and previews the atlases when images are added, removed, or when atlas settings change (no need to click "Pack & Preview").
+  - If an image requires a larger atlas, the app will create a dedicated atlas only if the "Allow dedicated atlas" checkbox is enabled in the Atlas Settings; otherwise you will get a packing error and the image will not be appended to the list. The generated atlas JSON may include a `note` property explaining a dedicated or fallback placement.
 - Export all atlases and their JSON descriptors as a single ZIP pack
 - Clean, modern UI built with React and custom CSS (no Bootstrap)
 

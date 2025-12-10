@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { loadImagesFromFiles } from '../utils/imageLoader';
 
-export default function ImageUploader({ onImagesLoaded }) {
+export default function ImageUploader({ onAddImages }) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -10,7 +10,7 @@ export default function ImageUploader({ onImagesLoaded }) {
 
     try {
       const images = await loadImagesFromFiles(Array.from(files));
-      onImagesLoaded(images);
+      onAddImages(images);
     } catch (error) {
       console.error('Error loading images:', error);
       alert(`Failed to load images: ${error.message}`);

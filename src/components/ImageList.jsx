@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function ImageList({ images }) {
+export default function ImageList({ images, onRemoveImage }) {
   if (!images || images.length === 0) {
     return null;
   }
@@ -16,6 +16,13 @@ export default function ImageList({ images }) {
             <span className="image-list-size">
               {img.width}×{img.height}
             </span>
+            <button
+              title="Remove image"
+              className="remove-image-btn"
+              onClick={() => onRemoveImage && onRemoveImage(idx)}
+            >
+              ✕
+            </button>
           </div>
         ))}
       </div>

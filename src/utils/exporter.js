@@ -7,7 +7,7 @@ import JSZip from 'jszip';
  * @returns {Object}
  */
 export function buildAtlasJSON(atlas, index) {
-  return {
+  const base = {
     atlasIndex: index,
     size: atlas.size,
     padding: atlas.padding,
@@ -19,6 +19,8 @@ export function buildAtlasJSON(atlas, index) {
       height: p.height,
     })),
   };
+  if (atlas.note) base.note = atlas.note;
+  return base;
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ImageUploader from './components/ImageUploader';
 import ImageList from './components/ImageList';
 import AtlasSettings from './components/AtlasSettings';
@@ -11,16 +11,48 @@ import { renderAllAtlases } from './utils/atlasRenderer';
 
 function App() {
   const [images, setImages] = useState([]);
-  const [settings, setSettings] = useState({ size: 1024, padding: 2 });
+  const [settings, setSettings] = useState({ size: 1024, padding: 2, allowAutoResize: false });
   const [atlases, setAtlases] = useState([]);
   const [activeAtlasIndex, setActiveAtlasIndex] = useState(0);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const [lastAddedNames, setLastAddedNames] = useState([]);
 
-  const handleImagesLoaded = (loadedImages) => {
-    setImages(loadedImages);
-    setAtlases([]);
-    setActiveAtlasIndex(0);
+  const handleAddImages = (loadedImages) => {
+    // Append new images; avoid duplicates by name
     setError('');
+    setInfo('');
+    setImages((prev) => {
+      const existingNames = new Set(prev.map((it) => it.name));
+      const filtered = loadedImages.filter((it) => !existingNames.has(it.name));
+
+      // If auto-resize is disabled, pre-check for oversized images and reject them up-front
+      if (!settings.allowAutoResize) {
+        const rejected = filtered.filter(
+          (it) => it.width + settings.padding > settings.size || it.height + settings.padding > settings.size
+        );
+        if (rejected.length) {
+          setError(
+            `The following image(s) are larger than selected atlas ${settings.size}×${settings.size}: ${rejected
+              .map((r) => r.name)
+              .join(', ')}`
+          );
+        }
+        // Only keep images that fit
+        const accepted = filtered.filter(
+          (it) => it.width + settings.padding <= settings.size && it.height + settings.padding <= settings.size
+        );
+        if (accepted.length) setLastAddedNames(accepted.map((it) => it.name));
+        return [...prev, ...accepted];
+      }
+
+      setLastAddedNames(filtered.map((it) => it.name));
+      return [...prev, ...filtered];
+    });
+  };
+
+  const handleRemoveImage = (index) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handlePack = () => {
@@ -32,7 +64,7 @@ function App() {
     setError('');
 
     try {
-      const packed = packImages(images, settings.size, settings.padding);
+      const packed = packImages(images, settings.size, settings.padding, 4096, settings.allowAutoResize);
       renderAllAtlases(packed);
       setAtlases(packed);
       setActiveAtlasIndex(0);
@@ -42,6 +74,55 @@ function App() {
       setAtlases([]);
     }
   };
+
+  // Auto-pack on images or settings change (debounced)
+  const packTimer = useRef(null);
+  useEffect(() => {
+    if (packTimer.current) clearTimeout(packTimer.current);
+    packTimer.current = setTimeout(() => {
+      if (images.length === 0) {
+        setAtlases([]);
+        setActiveAtlasIndex(0);
+        setError('');
+        return;
+      }
+      try {
+        const packed = packImages(images, settings.size, settings.padding, 4096, settings.allowAutoResize);
+        renderAllAtlases(packed);
+        setAtlases(packed);
+        // If we recently added images, try to show the atlas that contains the
+        // last added image so users see it immediately.
+        let newIndex = 0;
+        if (lastAddedNames && lastAddedNames.length) {
+          const lastName = lastAddedNames[lastAddedNames.length - 1];
+          for (let i = 0; i < packed.length; i++) {
+            if (packed[i].placements.some((p) => p.name === lastName)) {
+              newIndex = i;
+              break;
+            }
+          }
+        }
+        setActiveAtlasIndex(newIndex);
+        setLastAddedNames([]);
+        // Show any notes from the packing result (dedicated atlas or fallback placement)
+        const notes = packed
+          .map((a) => a.note)
+          .filter(Boolean);
+        if (notes.length) {
+          setInfo(notes.join('\n'));
+          setTimeout(() => setInfo(''), 5000);
+        } else {
+          setInfo('');
+        }
+        setError('');
+      } catch (err) {
+        console.error('Packing error:', err);
+        setError(err.message);
+        setAtlases([]);
+      }
+    }, 200);
+    return () => clearTimeout(packTimer.current);
+  }, [images, settings]);
 
   const activeAtlas = atlases[activeAtlasIndex];
 
@@ -55,8 +136,8 @@ function App() {
         <aside className="sidebar">
           <section className="card">
             <h2>1. Images</h2>
-            <ImageUploader onImagesLoaded={handleImagesLoaded} />
-            <ImageList images={images} />
+            <ImageUploader onAddImages={handleAddImages} />
+            <ImageList images={images} onRemoveImage={handleRemoveImage} />
           </section>
 
           <section className="card">
@@ -65,7 +146,7 @@ function App() {
               settings={settings}
               onSettingsChange={setSettings}
               onPack={handlePack}
-              disabled={images.length === 0}
+              disabled={false}
             />
           </section>
 
@@ -88,6 +169,7 @@ function App() {
             </div>
 
             {error && <div className="error-message">{error}</div>}
+            {info && <div className="info-message">{info}</div>}
 
             <PreviewCanvas atlas={activeAtlas} />
             <AtlasPager
