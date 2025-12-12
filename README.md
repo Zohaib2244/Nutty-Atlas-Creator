@@ -58,6 +58,41 @@ If Node.js is not installed:
 brew install node
 ```
 
+
+## Building a macOS app (DMG)
+
+You can package the app as a macOS DMG using Electron and electron-builder. This creates a distributable DMG file you can send to non-technical peers.
+
+1. Install dependencies (Electron and electron-builder are required):
+
+```bash
+npm install
+```
+
+1. Build the renderer and package app:
+
+```bash
+npm run build   # produce production build into dist/
+npm run build:app   # run electron-builder to create macOS DMG
+```
+
+1. The DMG output will be under `dist/` (or `dist/mac` depending on electron-builder), and you'll find `Nutty Atlas Creator.dmg`.
+
+Notes:
+
+1. If you want to test the Electron app locally during development, run the dev server and then start Electron:
+
+```bash
+npm run dev
+npm run electron:dev
+```
+
+1. Code signing is required for notarization on macOS; if you don't have a developer ID, you'll still be able to build a DMG, but macOS will show warnings when users run it.
+
+1. Add an icon at `assets/icon.icns` if you'd like a custom app icon.
+
+
+
 **macOS (official installer):**
 Download from [nodejs.org](https://nodejs.org/)
 
