@@ -164,16 +164,27 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Nutty Atlas Creator</h1>
-        <div className="mode-toggle" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span style={{ fontSize: '0.9rem', color: mode === 'create' ? '#4a90e2' : '#888' }}>Create</span>
+        <div className="mode-toggle-container">
           <button
-            className="btn btn-secondary"
-            onClick={handleModeToggle}
-            style={{ padding: '0.5rem 1rem' }}
+            className={`mode-option ${mode === 'create' ? 'active' : ''}`}
+            onClick={() => mode !== 'create' && handleModeToggle()}
           >
-            {mode === 'create' ? 'Switch to Edit Mode' : 'Switch to Create Mode'}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            <span>Create New</span>
           </button>
-          <span style={{ fontSize: '0.9rem', color: mode === 'edit' ? '#4a90e2' : '#888' }}>Edit</span>
+          <button
+            className={`mode-option ${mode === 'edit' ? 'active' : ''}`}
+            onClick={() => mode !== 'edit' && handleModeToggle()}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            <span>Edit Existing</span>
+          </button>
+          <div className={`mode-slider ${mode === 'edit' ? 'right' : ''}`}></div>
         </div>
       </header>
 
@@ -202,7 +213,6 @@ function App() {
             <AtlasSettings
               settings={settings}
               onSettingsChange={setSettings}
-              onPack={handlePack}
               disabled={mode === 'edit' && !existingAtlas}
             />
             {mode === 'edit' && existingAtlas && (

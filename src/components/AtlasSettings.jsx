@@ -2,7 +2,7 @@ import React from 'react';
 
 const ATLAS_SIZES = [128, 256, 512, 1024, 2048, 4096];
 
-export default function AtlasSettings({ settings, onSettingsChange, onPack, disabled }) {
+export default function AtlasSettings({ settings, onSettingsChange, disabled }) {
   const handleSizeChange = (e) => {
     const newSize = parseInt(e.target.value, 10);
     console.debug('Atlas size change:', newSize);
@@ -57,10 +57,7 @@ export default function AtlasSettings({ settings, onSettingsChange, onPack, disa
           style={{ pointerEvents: 'auto', zIndex: 2 }}
         />
       </div>
-      {/* No dynamic resizing: images larger than the selected atlas size will be rejected */}
-      <button className="btn btn-primary" onClick={onPack} disabled={disabled}>
-        Pack & Preview
-      </button>
+      {/* Auto-pack on change - no manual button needed */}
       <p className="small text-secondary" style={{ marginTop: '0.5rem' }}>
         Note: Images larger than the selected atlas size will be rejected and must be resized before uploading.
       </p>
