@@ -96,6 +96,21 @@ npm run build
 
 The production build will be in the `dist/` folder. You can serve it with any static file server.
 
+## GitHub Pages Deployment
+
+This project is configured for automatic deployment to GitHub Pages. When you push to the `main` branch, a GitHub Actions workflow will automatically build and deploy the application.
+
+### Setup Instructions
+
+1. Go to your repository settings on GitHub
+2. Navigate to **Settings** → **Pages**
+3. Under **Build and deployment**, select:
+   - **Source**: GitHub Actions
+4. Push your changes to the `main` branch
+5. The site will be available at: `https://zohaib2244.github.io/Nutty-Atlas-Creator/`
+
+The deployment workflow is configured in `.github/workflows/deploy.yml` and will run automatically on every push to `main` or can be triggered manually from the Actions tab.
+
 ## How to Use
 
 1. **Upload Images**: Drag and drop images onto the upload zone, or click to browse
