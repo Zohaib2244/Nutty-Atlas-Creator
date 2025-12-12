@@ -23,7 +23,6 @@ function App() {
   const [existingAtlas, setExistingAtlas] = useState(null);
   const [selectedPlacement, setSelectedPlacement] = useState(null);
   const [leftTab, setLeftTab] = useState('images'); // images | settings | export
-  const [previewScale, setPreviewScale] = useState(0.5); // static display scale for preview
 
   const handleAddImages = (loadedImages) => {
     // Append new images; avoid duplicates by name
@@ -393,51 +392,39 @@ function App() {
           <div className="card preview-card">
             <div className="preview-header">
               <h2>Preview</h2>
-              {activeAtlas ? (
-                <div className="preview-meta">
-                  <span className="preview-info">
-                    Atlas {activeAtlasIndex + 1} / {atlases.length} — {activeAtlas.size}×{activeAtlas.size}
-                  </span>
-                  <span className="preview-divider">|</span>
-                  <span className="preview-subinfo">Padding: {settings.padding}px</span>
+                <div className="preview-right">
+                  {activeAtlas ? (
+                    <div className="preview-meta">
+                      <span className="preview-info">
+                        Atlas {activeAtlasIndex + 1} / {atlases.length} — {activeAtlas.size}×{activeAtlas.size}
+                      </span>
+                      <span className="preview-divider">|</span>
+                      <span className="preview-subinfo">Padding: {settings.padding}px</span>
+                    </div>
+                  ) : (
+                    <div className="preview-meta">
+                      <span className="preview-info">Canvas: {settings.size}×{settings.size}</span>
+                      <span className="preview-divider">|</span>
+                      <span className="preview-subinfo">Padding: {settings.padding}px</span>
+                    </div>
+                  )}
+                  <AtlasPager
+                    atlases={atlases}
+                    activeIndex={activeAtlasIndex}
+                    onSelectAtlas={handleSelectAtlasIndex}
+                  />
                 </div>
-              ) : (
-                <div className="preview-meta">
-                  <span className="preview-info">Canvas: {settings.size}×{settings.size}</span>
-                  <span className="preview-divider">|</span>
-                  <span className="preview-subinfo">Padding: {settings.padding}px</span>
-                </div>
-              )}
-              <div className="preview-actions">
-                <label className="preview-scale-label">
-                  Scale
-                  <select
-                    className="preview-scale-select"
-                    value={previewScale}
-                    onChange={(e) => setPreviewScale(parseFloat(e.target.value))}
-                  >
-                    <option value={0.25}>25%</option>
-                    <option value={0.5}>50%</option>
-                    <option value={0.75}>75%</option>
-                    <option value={1}>100%</option>
-                  </select>
-                </label>
-              </div>
+              {/* Static preview area — scale controls removed */}
             </div>
 
             {error && <div className="error-message">{error}</div>}
             {info && <div className="info-message">{info}</div>}
 
+            {/* pager moved into header */}
             <PreviewCanvas
               atlas={activeAtlas}
               canvasSize={settings.size}
-              previewScale={previewScale}
               selection={selectedPlacement && activeAtlas ? { ...selectedPlacement, size: activeAtlas.size } : null}
-            />
-            <AtlasPager
-              atlases={atlases}
-              activeIndex={activeAtlasIndex}
-              onSelectAtlas={handleSelectAtlasIndex}
             />
             {/* JSON preview sits in the atlas panel on the right now */}
           </div>

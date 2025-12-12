@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
-export default function PreviewCanvas({ atlas, canvasSize, selection, previewScale = 1 }) {
+export default function PreviewCanvas({ atlas, canvasSize, selection }) {
   const canvasRef = useRef(null);
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -15,14 +16,21 @@ export default function PreviewCanvas({ atlas, canvasSize, selection, previewSca
     if (atlas && atlas.canvas) ctx.drawImage(atlas.canvas, 0, 0);
   }, [atlas, canvasSize]);
 
+  useEffect(() => {
+    const handler = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
   const size = atlas && atlas.size ? atlas.size : canvasSize || 1024;
-  const scale = previewScale || 1;
-  const displaySize = size * scale;
-  
-  // Normalize to fit viewport: calculate max safe display size
-  // Assuming viewport height ~100vh, header ~70px, padding ~50px = ~calc(100vh - 250px) available
-  // Use 55vh as safe max to ensure pager stays visible
-  const maxDisplaySize = Math.min(displaySize, window.innerHeight * 0.55);
+  // Static display size (px). This is a fixed square preview area.
+  const STATIC_DISPLAY_SIZE = 800;
+  // Normalize to fit viewport safely (ensure it doesn't overflow pager area)
+  const maxDisplaySize = Math.min(
+    STATIC_DISPLAY_SIZE,
+    Math.floor(viewport.height * 0.9),
+    Math.floor(viewport.width * 0.9)
+  );
 
   return (
     <div className="preview-container">
