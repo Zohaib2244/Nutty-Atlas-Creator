@@ -2,49 +2,9 @@
  * Simple binary tree rectangle packing algorithm
  */
 
-class Node {
-  constructor(x, y, w, h) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
-    this.used = false;
-    this.right = null;
-    this.down = null;
-  }
-}
-
-function insertRect(node, w, h) {
-  if (node.used) {
-    return insertRect(node.right, w, h) || insertRect(node.down, w, h);
-  }
-
-  if (w > node.w || h > node.h) {
-    return null;
-  }
-
-  if (w === node.w && h === node.h) {
-    node.used = true;
-    return node;
-  }
-
-  node.used = true;
-
-  const dw = node.w - w;
-  const dh = node.h - h;
-
-  if (dw > dh) {
-    node.right = new Node(node.x + w, node.y, dw, h);
-    node.down = new Node(node.x, node.y + h, node.w, dh);
-    
-  } else {
-    node.right = new Node(node.x + w, node.y, dw, node.h);
-    node.down = new Node(node.x, node.y + h, w, dh);
-    
-  }
-
-  return insertRect(node, w, h);
-}
+// Node and insertRect were used by the older binary-tree packer.
+// The current implementation uses a shelf-based packing algorithm, so they
+// are no longer necessary and have been removed.
 
 function createEmptyAtlas(size, padding, index) {
   return {
@@ -52,7 +12,8 @@ function createEmptyAtlas(size, padding, index) {
     size,
     padding,
     placements: [],
-    root: new Node(0, 0, size, size),
+    // root kept for backward compatibility; not used by current packer
+    root: null,
     canvas: null,
   };
 }
@@ -64,17 +25,10 @@ function createEmptyAtlas(size, padding, index) {
  * @param {number} padding
  * @returns {Array} atlases - [{index, size, padding, placements, root, canvas}]
  */
-function nextPowerOfTwo(x) {
-  if (x <= 0) return 1;
-  return 1 << Math.ceil(Math.log2(x));
-}
-
 /**
  * Pack images into one or more atlases
- * If an image is larger than the base atlasSize, create a dedicated atlas using the
- * next power-of-two size up to a max size (default 4096).
  */
-export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, allowAutoResize = false) {
+export function packImages(images, atlasSize, padding, maxAtlasSize = 4096) {
   // Simple shelf packing: place images left-to-right then top-to-bottom
   const sorted = [...images].sort((a, b) => Math.max(b.height, b.width) - Math.max(a.height, a.width));
 
@@ -90,20 +44,7 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, allo
 
     // Oversize check
     if (requiredWidth > atlasSize || requiredHeight > atlasSize) {
-      if (!allowAutoResize) {
-        throw new Error(`Image "${img.name}" (${img.width}x${img.height}) is too large for the selected atlas size ${atlasSize}x${atlasSize} with padding ${padding}.`);
-      }
-
-      // Create a dedicated atlas with nearest power of two up to maxAtlasSize
-      const newAtlasSize = Math.min(nextPowerOfTwo(Math.max(requiredWidth, requiredHeight)), maxAtlasSize);
-      if (newAtlasSize < Math.max(requiredWidth, requiredHeight)) {
-        throw new Error(`Image "${img.name}" (${img.width}x${img.height}) too large for max atlas size.`);
-      }
-      const bigAtlas = createEmptyAtlas(newAtlasSize, padding, atlases.length);
-      bigAtlas.placements.push({ name: img.name, x: 0, y: 0, width: img.width, height: img.height, img: img.img });
-      bigAtlas.note = `Placed ${img.name} in dedicated ${bigAtlas.size} atlas.`;
-      atlases.push(bigAtlas);
-      continue;
+      throw new Error(`Image "${img.name}" (${img.width}x${img.height}) is too large for the selected atlas size ${atlasSize}x${atlasSize} with padding ${padding}.`);
     }
 
     // New row if not fit horizontally

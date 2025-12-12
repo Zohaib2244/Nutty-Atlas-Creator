@@ -6,7 +6,7 @@ function makeMock(name, w, h) {
 
 function test(atlasSize, padding) {
   const images = [makeMock('img1', 50, 50), makeMock('img2', 50, 50), makeMock('img3', 120, 120)];
-  const atlases = packImages(images, atlasSize, padding, 4096, false);
+  const atlases = packImages(images, atlasSize, padding, 4096);
   console.log('Atlas count:', atlases.length);
   atlases.forEach((a, idx) => {
     console.log(`Atlas ${idx} size=${a.size} placements=${a.placements.length}`);

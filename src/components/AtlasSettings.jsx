@@ -24,7 +24,14 @@ export default function AtlasSettings({ settings, onSettingsChange, onPack, disa
           id="atlasSize"
           value={settings.size}
           onChange={handleSizeChange}
+          onMouseDown={(e) => {
+            // Prevent parent handlers (e.g., drag/drop areas) from stealing clicks
+            e.stopPropagation();
+            console.debug('Atlas size select mouseDown');
+          }}
+          onFocus={() => console.debug('Atlas size select focused')}
           disabled={disabled}
+          style={{ pointerEvents: 'auto', zIndex: 2 }}
         >
           {ATLAS_SIZES.map((size) => (
             <option key={size} value={size}>
@@ -41,27 +48,21 @@ export default function AtlasSettings({ settings, onSettingsChange, onPack, disa
           min="0"
           value={settings.padding}
           onChange={handlePaddingChange}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            console.debug('Atlas padding input mouseDown');
+          }}
+          onFocus={() => console.debug('Atlas padding input focused')}
           disabled={disabled}
+          style={{ pointerEvents: 'auto', zIndex: 2 }}
         />
       </div>
-      <div className="setting-group">
-        <label htmlFor="allowAutoResize">Allow dedicated atlas for too-large images</label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input
-            id="allowAutoResize"
-            type="checkbox"
-            checked={settings.allowAutoResize}
-            onChange={(e) => onSettingsChange({ ...settings, allowAutoResize: e.target.checked })}
-            disabled={false}
-          />
-          <span className="small text-secondary">When enabled, images larger than the selected atlas size will be placed into their own dedicated atlas (up to 4096×4096). When disabled, large images will cause an error and won't be packed.</span>
-        </div>
-      </div>
+      {/* No dynamic resizing: images larger than the selected atlas size will be rejected */}
       <button className="btn btn-primary" onClick={onPack} disabled={disabled}>
         Pack & Preview
       </button>
       <p className="small text-secondary" style={{ marginTop: '0.5rem' }}>
-        Note: When <strong>Allow dedicated atlas</strong> is enabled, an image larger than the selected size will be placed into a separate atlas (up to 4096×4096). When disabled, attempting to add such an image will produce an error.
+        Note: Images larger than the selected atlas size will be rejected and must be resized before uploading.
       </p>
       <div className="current-settings small text-secondary" style={{ marginTop: '0.5rem' }}>
         Current: {settings.size} × {settings.size}, padding: {settings.padding}px

@@ -12,7 +12,7 @@ A React-based web tool to build sprite atlases from uploaded images. Images are 
 - Preview each atlas with pager controls
 - Live JSON metadata preview
 - Auto-pack: the app automatically packs and previews the atlases when images are added, removed, or when atlas settings change (no need to click "Pack & Preview").
-  - If an image requires a larger atlas, the app will create a dedicated atlas only if the "Allow dedicated atlas" checkbox is enabled in the Atlas Settings; otherwise you will get a packing error and the image will not be appended to the list. The generated atlas JSON may include a `note` property explaining a dedicated or fallback placement.
+  - If an image is larger than the selected atlas size, the image will be rejected and you will see an error. Pick a larger atlas size from the drop-down if you need more space.
 - Export all atlases and their JSON descriptors as a single ZIP pack
 - Clean, modern UI built with React and custom CSS (no Bootstrap)
 
@@ -30,7 +30,7 @@ src/
 │   └── ExportPanel.jsx       # Export controls
 ├── utils/               # Business logic modules
 │   ├── imageLoader.js        # Load images from files
-│   ├── atlasPacker.js        # Binary tree packing algorithm
+│   ├── atlasPacker.js        # Shelf-based packing algorithm
 │   ├── atlasRenderer.js      # Render atlases to canvas
 │   └── exporter.js           # ZIP generation and download
 ├── styles/
@@ -92,7 +92,7 @@ The production build will be in the `dist/` folder. You can serve it with any st
 
 1. **Upload Images**: Drag and drop images onto the upload zone, or click to browse
 2. **Configure Settings**: Select atlas size (128–4096) and padding in pixels
-3. **Pack & Preview**: Click the button to pack images into atlases
+3. **Pack & Preview**: Click the button to pack images into atlases (or the app will auto-pack when you add/remove images or change settings).
    - If images don't fit in one atlas, multiple atlases are created automatically
    - Use the pager buttons to switch between atlases
    - View JSON metadata for the current atlas

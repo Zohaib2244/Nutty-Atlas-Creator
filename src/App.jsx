@@ -11,7 +11,7 @@ import { renderAllAtlases } from './utils/atlasRenderer';
 
 function App() {
   const [images, setImages] = useState([]);
-  const [settings, setSettings] = useState({ size: 1024, padding: 2, allowAutoResize: false });
+  const [settings, setSettings] = useState({ size: 1024, padding: 2 });
   const [atlases, setAtlases] = useState([]);
   const [activeAtlasIndex, setActiveAtlasIndex] = useState(0);
   const [error, setError] = useState('');
@@ -26,28 +26,23 @@ function App() {
       const existingNames = new Set(prev.map((it) => it.name));
       const filtered = loadedImages.filter((it) => !existingNames.has(it.name));
 
-      // If auto-resize is disabled, pre-check for oversized images and reject them up-front
-      if (!settings.allowAutoResize) {
-        const rejected = filtered.filter(
-          (it) => it.width + settings.padding > settings.size || it.height + settings.padding > settings.size
+      // Pre-check for oversized images and reject them up-front (no auto-resize)
+      const rejected = filtered.filter(
+        (it) => it.width + settings.padding > settings.size || it.height + settings.padding > settings.size
+      );
+      if (rejected.length) {
+        setError(
+          `The following image(s) are larger than selected atlas ${settings.size}×${settings.size}: ${rejected
+            .map((r) => r.name)
+            .join(', ')}`
         );
-        if (rejected.length) {
-          setError(
-            `The following image(s) are larger than selected atlas ${settings.size}×${settings.size}: ${rejected
-              .map((r) => r.name)
-              .join(', ')}`
-          );
-        }
-        // Only keep images that fit
-        const accepted = filtered.filter(
-          (it) => it.width + settings.padding <= settings.size && it.height + settings.padding <= settings.size
-        );
-        if (accepted.length) setLastAddedNames(accepted.map((it) => it.name));
-        return [...prev, ...accepted];
       }
-
-      setLastAddedNames(filtered.map((it) => it.name));
-      return [...prev, ...filtered];
+      // Only keep images that fit
+      const accepted = filtered.filter(
+        (it) => it.width + settings.padding <= settings.size && it.height + settings.padding <= settings.size
+      );
+      if (accepted.length) setLastAddedNames(accepted.map((it) => it.name));
+      return [...prev, ...accepted];
     });
   };
 
@@ -64,7 +59,7 @@ function App() {
     setError('');
 
     try {
-      const packed = packImages(images, settings.size, settings.padding, 4096, settings.allowAutoResize);
+      const packed = packImages(images, settings.size, settings.padding, 4096);
       renderAllAtlases(packed);
       setAtlases(packed);
       setActiveAtlasIndex(0);
@@ -87,7 +82,7 @@ function App() {
         return;
       }
       try {
-        const packed = packImages(images, settings.size, settings.padding, 4096, settings.allowAutoResize);
+        const packed = packImages(images, settings.size, settings.padding, 4096);
         renderAllAtlases(packed);
         setAtlases(packed);
         // If we recently added images, try to show the atlas that contains the
@@ -104,7 +99,7 @@ function App() {
         }
         setActiveAtlasIndex(newIndex);
         setLastAddedNames([]);
-        // Show any notes from the packing result (dedicated atlas or fallback placement)
+        // Show any notes from the packing result (informational messages)
         const notes = packed
           .map((a) => a.note)
           .filter(Boolean);
@@ -160,18 +155,19 @@ function App() {
           <div className="card preview-card">
             <div className="preview-header">
               <h2>Preview</h2>
-              {activeAtlas && (
+              {activeAtlas ? (
                 <span className="preview-info">
-                  Atlas {activeAtlasIndex + 1} / {atlases.length} — {activeAtlas.size}×
-                  {activeAtlas.size}
+                  Atlas {activeAtlasIndex + 1} / {atlases.length} — {activeAtlas.size}×{activeAtlas.size}
                 </span>
+              ) : (
+                <span className="preview-info">Canvas: {settings.size}×{settings.size}</span>
               )}
             </div>
 
             {error && <div className="error-message">{error}</div>}
             {info && <div className="info-message">{info}</div>}
 
-            <PreviewCanvas atlas={activeAtlas} />
+            <PreviewCanvas atlas={activeAtlas} canvasSize={settings.size} />
             <AtlasPager
               atlases={atlases}
               activeIndex={activeAtlasIndex}
