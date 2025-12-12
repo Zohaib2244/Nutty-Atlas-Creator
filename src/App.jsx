@@ -13,7 +13,7 @@ import { renderAllAtlases } from './utils/atlasRenderer';
 function App() {
   const [mode, setMode] = useState('create'); // 'create' or 'edit'
   const [images, setImages] = useState([]);
-  const [settings, setSettings] = useState({ size: 1024, padding: 2 });
+  const [settings, setSettings] = useState({ size: 1024, padding: 2, trim: false });
   const [atlases, setAtlases] = useState([]);
   const [activeAtlasIndex, setActiveAtlasIndex] = useState(0);
   const [error, setError] = useState('');
@@ -44,7 +44,18 @@ function App() {
       const accepted = filtered.filter(
         (it) => it.width + settings.padding <= settings.size && it.height + settings.padding <= settings.size
       );
-      if (accepted.length) setLastAddedNames(accepted.map((it) => it.name));
+      if (accepted.length) {
+        setLastAddedNames(accepted.map((it) => it.name));
+        
+        // Show trim info if enabled
+        if (settings.trim) {
+          const trimmedCount = accepted.filter(img => img.trimData?.trimmed).length;
+          if (trimmedCount > 0) {
+            setInfo(`✂️ Trimmed ${trimmedCount} image${trimmedCount > 1 ? 's' : ''} - removed transparent padding`);
+            setTimeout(() => setInfo(''), 4000);
+          }
+        }
+      }
       return [...prev, ...accepted];
     });
   };
@@ -204,7 +215,7 @@ function App() {
 
           <section className="card">
             <h2>{mode === 'edit' ? '2' : '1'}. Images</h2>
-            <ImageUploader onAddImages={handleAddImages} />
+            <ImageUploader onAddImages={handleAddImages} enableTrim={settings.trim} />
             <ImageList images={images} onRemoveImage={handleRemoveImage} />
           </section>
 

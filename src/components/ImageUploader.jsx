@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { loadImagesFromFiles } from '../utils/imageLoader';
 
-export default function ImageUploader({ onAddImages }) {
+export default function ImageUploader({ onAddImages, enableTrim }) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -9,7 +9,7 @@ export default function ImageUploader({ onAddImages }) {
     if (!files || files.length === 0) return;
 
     try {
-      const images = await loadImagesFromFiles(Array.from(files));
+      const images = await loadImagesFromFiles(Array.from(files), enableTrim);
       onAddImages(images);
     } catch (error) {
       console.error('Error loading images:', error);

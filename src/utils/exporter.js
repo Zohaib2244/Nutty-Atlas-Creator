@@ -15,12 +15,18 @@ export function buildAtlasJSON(atlas, index, existingJson = null) {
     // Add new placements to frames (only those with img, meaning they're new)
     for (const p of atlas.placements) {
       if (p.img) {
+        const trimData = p.trimData || {
+          trimmed: false,
+          sourceSize: { w: p.width, h: p.height },
+          spriteSourceSize: { x: 0, y: 0, w: p.width, h: p.height },
+        };
+        
         frames[p.name] = {
           frame: { x: p.x, y: p.y, w: p.width, h: p.height },
           rotated: false,
-          trimmed: false,
-          spriteSourceSize: { x: 0, y: 0, w: p.width, h: p.height },
-          sourceSize: { w: p.width, h: p.height },
+          trimmed: trimData.trimmed,
+          spriteSourceSize: trimData.spriteSourceSize,
+          sourceSize: trimData.sourceSize,
         };
       }
     }
@@ -38,12 +44,18 @@ export function buildAtlasJSON(atlas, index, existingJson = null) {
   // Standard format for create mode
   const frames = {};
   for (const p of atlas.placements) {
+    const trimData = p.trimData || {
+      trimmed: false,
+      sourceSize: { w: p.width, h: p.height },
+      spriteSourceSize: { x: 0, y: 0, w: p.width, h: p.height },
+    };
+    
     frames[p.name] = {
       frame: { x: p.x, y: p.y, w: p.width, h: p.height },
       rotated: false,
-      trimmed: false,
-      spriteSourceSize: { x: 0, y: 0, w: p.width, h: p.height },
-      sourceSize: { w: p.width, h: p.height },
+      trimmed: trimData.trimmed,
+      spriteSourceSize: trimData.spriteSourceSize,
+      sourceSize: trimData.sourceSize,
     };
   }
 

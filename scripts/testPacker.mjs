@@ -79,7 +79,7 @@ try {
   }
 } catch (e) { console.error(e.message); }
 
-console.log('\n10 items test (1024 atlas)');
+console.log('\n10 items test (1024 atlas, with trim simulation)');
 try {
   const images = [
     makeMock('item1', 200, 200),
@@ -92,7 +92,14 @@ try {
     makeMock('item8', 80, 140),
     makeMock('item9', 140, 80),
     makeMock('item10', 95, 95),
-  ];
+  ].map(img => ({
+    ...img,
+    trimData: {
+      trimmed: false,
+      sourceSize: { w: img.width, h: img.height },
+      spriteSourceSize: { x: 0, y: 0, w: img.width, h: img.height },
+    },
+  }));
   const atlases = packImages(images, 1024, 2, 4096);
   console.log('Atlas count:', atlases.length);
   atlases.forEach((a, idx) => {

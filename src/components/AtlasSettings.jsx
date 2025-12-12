@@ -57,6 +57,22 @@ export default function AtlasSettings({ settings, onSettingsChange, disabled }) 
           style={{ pointerEvents: 'auto', zIndex: 2 }}
         />
       </div>
+      <div className="setting-group">
+        <label className="toggle-label">
+          <input
+            type="checkbox"
+            checked={settings.trim || false}
+            onChange={(e) => {
+              console.debug('Trim mode change:', e.target.checked);
+              onSettingsChange({ ...settings, trim: e.target.checked });
+            }}
+            disabled={disabled}
+            style={{ marginRight: '0.5rem' }}
+          />
+          <span>Trim transparent pixels</span>
+        </label>
+        <p className="setting-description">Remove transparent areas to pack sprites tighter</p>
+      </div>
       {/* Auto-pack on change - no manual button needed */}
       <p className="small text-secondary" style={{ marginTop: '0.5rem' }}>
         Note: Images larger than the selected atlas size will be rejected and must be resized before uploading.

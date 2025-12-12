@@ -140,7 +140,15 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
     }
 
     // Place the image
-    atlas.placements.push({ name: img.name, x: placedX, y: placedY, width: img.width, height: img.height, img: img.img });
+    atlas.placements.push({ 
+      name: img.name, 
+      x: placedX, 
+      y: placedY, 
+      width: img.width, 
+      height: img.height, 
+      img: img.img,
+      trimData: img.trimData || null,
+    });
 
     // Update free rects: split all overlapping rects by the used rect
     const newFreeRects = [];

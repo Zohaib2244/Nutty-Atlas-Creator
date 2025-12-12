@@ -8,13 +8,19 @@ A React-based web tool to build sprite atlases from uploaded images. Images are 
 - Upload any number of image files (PNG, JPG, etc.)
 - Choose square atlas size from 128×128 up to 4096×4096
 - Specify padding between sprites in pixels
+- **Trim Mode**: Automatically remove transparent padding from sprites for tighter packing
+  - Preserves original dimensions and sprite source bounds in JSON metadata
+  - Toggle on/off per project
+- **Edit Atlas Mode**: Load existing atlas + JSON to add new sprites
+  - Packs new sprites into remaining free space
+  - Merges old and new sprites in exported JSON
 - Automatically creates multiple atlases when images don't fit into a single sheet
 - Preview each atlas with pager controls
 - Live JSON metadata preview
-- Auto-pack: the app automatically packs and previews the atlases when images are added, removed, or when atlas settings change (no need to click "Pack & Preview").
+- Auto-pack: the app automatically packs and previews the atlases when images are added, removed, or when atlas settings change
   - If an image is larger than the selected atlas size, the image will be rejected and you will see an error. Pick a larger atlas size from the drop-down if you need more space.
 - Export all atlases and their JSON descriptors as a single ZIP pack
-- Clean, modern UI built with React and custom CSS (no Bootstrap)
+- Clean, modern UI with animated mode toggle and smooth transitions
 
 ## Project Structure
 
@@ -23,14 +29,16 @@ src/
 ├── components/          # React components
 │   ├── ImageUploader.jsx    # Drag-and-drop file upload
 │   ├── ImageList.jsx         # Display loaded images
-│   ├── AtlasSettings.jsx     # Size and padding controls
+│   ├── AtlasSettings.jsx     # Size, padding, and trim controls
+│   ├── AtlasUploader.jsx     # Load existing atlas for editing
 │   ├── PreviewCanvas.jsx     # Canvas display for atlas
 │   ├── AtlasPager.jsx        # Atlas navigation buttons
 │   ├── JSONPreview.jsx       # JSON metadata display
 │   └── ExportPanel.jsx       # Export controls
 ├── utils/               # Business logic modules
 │   ├── imageLoader.js        # Load images from files
-│   ├── atlasPacker.js        # Shelf-based packing algorithm
+│   ├── imageTrimmer.js       # Trim transparent pixels
+│   ├── atlasPacker.js        # MaxRects packing algorithm
 │   ├── atlasRenderer.js      # Render atlases to canvas
 │   └── exporter.js           # ZIP generation and download
 ├── styles/
