@@ -204,6 +204,7 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
     editAtlas.freeRects = computeFreeRectsFromPlacements(existingAtlas.placements, atlasSize, padding);
     editAtlas.isEditing = true;
     editAtlas.baseImage = existingAtlas.img;
+    editAtlas.removedRegions = existingAtlas.removedRegions ? [...existingAtlas.removedRegions] : [];
     atlases.push(editAtlas);
   }
 

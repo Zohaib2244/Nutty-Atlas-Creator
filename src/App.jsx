@@ -7,6 +7,7 @@ import AtlasPager from './components/AtlasPager';
 import JSONPreview from './components/JSONPreview';
 import ExportPanel from './components/ExportPanel';
 import AtlasUploader from './components/AtlasUploader';
+import AtlasPlacementList from './components/AtlasPlacementList';
 import { packImages } from './utils/atlasPacker';
 import { renderAllAtlases } from './utils/atlasRenderer';
 
@@ -20,6 +21,9 @@ function App() {
   const [info, setInfo] = useState('');
   const [lastAddedNames, setLastAddedNames] = useState([]);
   const [existingAtlas, setExistingAtlas] = useState(null);
+  const [selectedPlacement, setSelectedPlacement] = useState(null);
+  const [leftTab, setLeftTab] = useState('images'); // images | settings | export
+  const [previewScale, setPreviewScale] = useState(0.5); // static display scale for preview
 
   const handleAddImages = (loadedImages) => {
     // Append new images; avoid duplicates by name
@@ -65,7 +69,7 @@ function App() {
   };
 
   const handleAtlasLoad = (atlasData) => {
-    setExistingAtlas(atlasData);
+    setExistingAtlas({ ...atlasData, removedRegions: [] });
     setSettings((prev) => ({ ...prev, size: atlasData.atlasSize, padding: atlasData.padding }));
     setInfo(`Loaded existing atlas with ${atlasData.placements.length} sprites. Add new images to extend it.`);
     setError('');
@@ -77,8 +81,42 @@ function App() {
     setImages([]);
     setAtlases([]);
     setExistingAtlas(null);
+    setSelectedPlacement(null);
     setError('');
     setInfo('');
+    // Reset left tab to images when switching modes
+    setLeftTab('images');
+  };
+
+  const handleSelectAtlasIndex = (idx) => {
+    setActiveAtlasIndex(idx);
+    setSelectedPlacement(null);
+  };
+
+  const handleSelectPlacement = (placement, atlasIndex, key) => {
+    const targetAtlas = atlases[atlasIndex];
+    if (!targetAtlas) return;
+    setActiveAtlasIndex(atlasIndex);
+    setSelectedPlacement({ ...placement, size: targetAtlas.size, key });
+  };
+
+  const handleDeletePlacement = (placement) => {
+    if (mode !== 'edit' || !existingAtlas) return;
+    setSelectedPlacement(null);
+    if (placement.img) {
+      // Newly added in this session: remove from images to drop it from the atlas
+      setImages((prev) => prev.filter((img) => !(img.name === placement.name && img.width === placement.width && img.height === placement.height)));
+      return;
+    }
+    setExistingAtlas((prev) => {
+      if (!prev) return prev;
+      const updatedPlacements = prev.placements.filter(
+        (p) =>
+          !(p.name === placement.name && p.x === placement.x && p.y === placement.y && p.width === placement.width && p.height === placement.height)
+      );
+      const removedRegions = [...(prev.removedRegions || []), { x: placement.x, y: placement.y, width: placement.width, height: placement.height }];
+      return { ...prev, placements: updatedPlacements, removedRegions };
+    });
   };
 
   const handlePack = () => {
@@ -92,6 +130,7 @@ function App() {
     }
 
     setError('');
+    setSelectedPlacement(null);
 
     try {
       const packed = packImages(images, settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
@@ -118,6 +157,7 @@ function App() {
         setAtlases([]);
         setActiveAtlasIndex(0);
         setError('');
+        setSelectedPlacement(null);
         return;
       }
       if (images.length === 0 && mode === 'edit' && existingAtlas) {
@@ -127,6 +167,7 @@ function App() {
           renderAllAtlases(packed);
           setAtlases(packed);
           setActiveAtlasIndex(0);
+          setSelectedPlacement(null);
         } catch (err) {
           console.error('Packing error:', err);
         }
@@ -150,6 +191,7 @@ function App() {
         }
         setActiveAtlasIndex(newIndex);
         setLastAddedNames([]);
+        setSelectedPlacement(null);
         // Show any notes from the packing result (informational messages)
         const notes = packed
           .map((a) => a.note)
@@ -200,9 +242,30 @@ function App() {
         </div>
       </header>
 
-      <main className="app-main">
+      <main className={`app-main ${activeAtlas ? 'has-atlas-panel' : ''}`}>
         <aside className="sidebar">
-          {mode === 'edit' && (
+          <div className="left-tabs">
+            <button
+              className={`left-tab ${leftTab === 'images' ? 'active' : ''}`}
+              onClick={() => setLeftTab('images')}
+            >
+              Images
+            </button>
+            <button
+              className={`left-tab ${leftTab === 'settings' ? 'active' : ''}`}
+              onClick={() => setLeftTab('settings')}
+            >
+              Settings
+            </button>
+            <button
+              className={`left-tab ${leftTab === 'export' ? 'active' : ''}`}
+              onClick={() => setLeftTab('export')}
+            >
+              Export
+            </button>
+            {/* Load is merged into Images tab in edit mode */}
+          </div>
+          {leftTab === 'load' && mode === 'edit' && (
             <section className="card">
               <h2>1. Load Existing Atlas</h2>
               <AtlasUploader onAtlasLoad={handleAtlasLoad} />
@@ -214,30 +277,47 @@ function App() {
             </section>
           )}
 
-          <section className="card">
-            <h2>{mode === 'edit' ? '2' : '1'}. Images</h2>
-            <ImageUploader onAddImages={handleAddImages} enableTrim={settings.trim} />
-            <ImageList images={images} onRemoveImage={handleRemoveImage} />
-          </section>
+          {leftTab === 'images' && (
+            <section className="card">
+              <h2>Images</h2>
+              {mode === 'edit' && (
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <h4 style={{ marginBottom: '0.5rem' }}>Load Existing Atlas</h4>
+                  <AtlasUploader onAtlasLoad={handleAtlasLoad} />
+                  {existingAtlas && (
+                    <div className="existing-atlas-info" style={{ marginTop: '0.5rem', padding: '0.4rem', background: '#f0f0f0', borderRadius: '4px', color: '#000' }}>
+                      <strong>Loaded:</strong> {existingAtlas.placements.length} sprites, {existingAtlas.atlasSize}×{existingAtlas.atlasSize}
+                    </div>
+                  )}
+                </div>
+              )}
+              <ImageUploader onAddImages={handleAddImages} enableTrim={settings.trim} />
+              <ImageList images={images} onRemoveImage={handleRemoveImage} />
+            </section>
+          )}
 
-          <section className="card">
-            <h2>{mode === 'edit' ? '3' : '2'}. Settings</h2>
-            <AtlasSettings
-              settings={settings}
-              onSettingsChange={setSettings}
-              disabled={mode === 'edit' && !existingAtlas}
-            />
-            {mode === 'edit' && existingAtlas && (
-              <div className="info-message" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
-                Note: Settings loaded from existing atlas. New sprites will use these settings.
-              </div>
-            )}
-          </section>
+          {leftTab === 'settings' && (
+            <section className="card">
+              <h2>Settings</h2>
+              <AtlasSettings
+                settings={settings}
+                onSettingsChange={setSettings}
+                disabled={mode === 'edit' && !existingAtlas}
+              />
+              {mode === 'edit' && existingAtlas && (
+                <div className="info-message" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+                  Note: Settings loaded from existing atlas. New sprites will use these settings.
+                </div>
+              )}
+            </section>
+          )}
 
-          <section className="card">
-            <h2>{mode === 'edit' ? '4' : '3'}. Export</h2>
-            <ExportPanel atlases={atlases} disabled={atlases.length === 0} existingAtlas={existingAtlas} />
-          </section>
+          {leftTab === 'export' && (
+            <section className="card">
+              <h2>Export</h2>
+              <ExportPanel atlases={atlases} disabled={atlases.length === 0} existingAtlas={existingAtlas} />
+            </section>
+          )}
         </aside>
 
         <section className="preview-section">
@@ -251,20 +331,58 @@ function App() {
               ) : (
                 <span className="preview-info">Canvas: {settings.size}×{settings.size}</span>
               )}
+              <div className="preview-actions">
+                <label className="preview-scale-label">
+                  Scale
+                  <select
+                    className="preview-scale-select"
+                    value={previewScale}
+                    onChange={(e) => setPreviewScale(parseFloat(e.target.value))}
+                  >
+                    <option value={0.25}>25%</option>
+                    <option value={0.5}>50%</option>
+                    <option value={0.75}>75%</option>
+                    <option value={1}>100%</option>
+                  </select>
+                </label>
+              </div>
             </div>
 
             {error && <div className="error-message">{error}</div>}
             {info && <div className="info-message">{info}</div>}
 
-            <PreviewCanvas atlas={activeAtlas} canvasSize={settings.size} previewBg={settings.previewBg} />
+            <PreviewCanvas
+              atlas={activeAtlas}
+              canvasSize={settings.size}
+              previewBg={settings.previewBg}
+              previewScale={previewScale}
+              selection={selectedPlacement && activeAtlas ? { ...selectedPlacement, size: activeAtlas.size } : null}
+            />
             <AtlasPager
               atlases={atlases}
               activeIndex={activeAtlasIndex}
-              onSelectAtlas={setActiveAtlasIndex}
+              onSelectAtlas={handleSelectAtlasIndex}
             />
-            <JSONPreview atlas={activeAtlas} atlasIndex={activeAtlasIndex} />
+            {/* JSON preview sits in the atlas panel on the right now */}
           </div>
         </section>
+
+        {activeAtlas && (
+          <aside className="atlas-panel">
+            <div className="card">
+              <AtlasPlacementList
+                atlas={activeAtlas}
+                atlasIndex={activeAtlasIndex}
+                onSelect={handleSelectPlacement}
+                onDelete={handleDeletePlacement}
+                selected={selectedPlacement}
+              />
+            </div>
+            <div className="card">
+              <JSONPreview atlas={activeAtlas} atlasIndex={activeAtlasIndex} />
+            </div>
+          </aside>
+        )}
       </main>
     </div>
   );

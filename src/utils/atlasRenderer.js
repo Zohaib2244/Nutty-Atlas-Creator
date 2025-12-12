@@ -16,6 +16,13 @@ export function renderAtlasToCanvas(atlas) {
     ctx.drawImage(atlas.baseImage, 0, 0, atlas.size, atlas.size);
   }
 
+  // Clear any regions that were removed while editing
+  if (atlas.removedRegions && atlas.removedRegions.length) {
+    for (const region of atlas.removedRegions) {
+      ctx.clearRect(region.x, region.y, region.width, region.height);
+    }
+  }
+
   // Draw placements (new images in edit mode, or all images in create mode)
   for (const placement of atlas.placements) {
     // Skip placements without img (existing placements from JSON)
