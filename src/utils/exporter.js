@@ -94,13 +94,15 @@ function canvasToBlob(canvas) {
  * @param {Object} existingAtlas - Optional existing atlas data (for edit mode)
  * @returns {Promise<Blob>}
  */
-export async function exportAtlasesAsZip(atlases, existingAtlas = null) {
+export async function exportAtlasesAsZip(atlases, existingAtlas = null, customName = 'atlas') {
   const zip = new JSZip();
   const meta = { atlases: [] };
 
+  const safeName = (customName || 'atlas').replace(/[^\w-]/g, '_');
+
   for (let i = 0; i < atlases.length; i++) {
     const atlas = atlases[i];
-    const baseName = `atlas_${i + 1}`;
+    const baseName = `AVN_${safeName}_${i + 1}`;
 
     // Pass existing JSON if editing
     const existingJson = (atlas.isEditing && existingAtlas) ? existingAtlas.originalJson : null;

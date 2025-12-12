@@ -4,14 +4,14 @@ function placementKey(p, idx) {
   return `${p.name}-${p.x}-${p.y}-${p.width}-${p.height}-${idx}`;
 }
 
-export default function AtlasPlacementList({ atlas, atlasIndex = 0, onSelect, onDelete, selected }) {
+export default function AtlasPlacementList({ atlas, atlasIndex = 0, onSelect, onDelete, onReplace, selected, mode }) {
   if (!atlas || !atlas.placements || atlas.placements.length === 0) return null;
 
   return (
     <div className="atlas-placement-list">
       <div className="list-header">
         <h3>Atlas Images ({atlas.placements.length})</h3>
-        <span className="list-sub">Tap to preview, delete to remove.</span>
+        <span className="list-sub">Tap to preview{mode === 'edit' ? ', replace or delete' : ', delete to remove'}.</span>
       </div>
       <div className="placement-items">
         {atlas.placements.map((p, idx) => {
@@ -31,6 +31,19 @@ export default function AtlasPlacementList({ atlas, atlasIndex = 0, onSelect, on
                 <span className={`placement-badge ${p.img ? 'badge-new' : 'badge-existing'}`}>
                   {p.img ? 'New' : 'Existing'}
                 </span>
+                {mode === 'edit' && (
+                  <button
+                    type="button"
+                    className="replace-image-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onReplace && onReplace(p, atlasIndex, key);
+                    }}
+                    title="Replace image"
+                  >
+                    ⟳
+                  </button>
+                )}
                 <button
                   type="button"
                   className="remove-image-btn"

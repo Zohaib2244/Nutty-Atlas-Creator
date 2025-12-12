@@ -1,11 +1,6 @@
 import React from 'react';
 
 const ATLAS_SIZES = [128, 256, 512, 1024, 2048, 4096];
-const PREVIEW_BACKGROUNDS = [
-  { value: 'white', label: 'White' },
-  { value: 'black', label: 'Black' },
-  { value: 'transparent', label: 'Transparent' },
-];
 
 export default function AtlasSettings({ settings, onSettingsChange, disabled }) {
   const handleSizeChange = (e) => {
@@ -20,14 +15,8 @@ export default function AtlasSettings({ settings, onSettingsChange, disabled }) 
     onSettingsChange({ ...settings, padding: value });
   };
 
-  const handlePreviewBgChange = (value) => {
-    console.debug('Preview background change:', value);
-    onSettingsChange({ ...settings, previewBg: value });
-  };
-
   return (
     <div className="atlas-settings">
-      <h3>Atlas Settings</h3>
       <div className="setting-group">
         <label htmlFor="atlasSize">Atlas Size (square)</label>
         <select
@@ -83,31 +72,7 @@ export default function AtlasSettings({ settings, onSettingsChange, disabled }) 
         </label>
         <p className="setting-description">Remove transparent areas to pack sprites tighter</p>
       </div>
-      <div className="setting-group">
-        <label>Preview Background</label>
-        <div className="preview-bg-toggle" role="group" aria-label="Preview background options">
-          {PREVIEW_BACKGROUNDS.map((bg) => (
-            <button
-              key={bg.value}
-              type="button"
-              className={`bg-chip ${settings.previewBg === bg.value ? 'active' : ''} bg-${bg.value}`}
-              onClick={() => handlePreviewBgChange(bg.value)}
-              disabled={disabled}
-            >
-              <span className="bg-chip-swatch" aria-hidden />
-              <span>{bg.label}</span>
-            </button>
-          ))}
-        </div>
-        <p className="setting-description">Preview backdrop only — export stays transparent.</p>
-      </div>
       {/* Auto-pack on change - no manual button needed */}
-      <p className="small text-secondary" style={{ marginTop: '0.5rem' }}>
-        Note: Images larger than the selected atlas size will be rejected and must be resized before uploading.
-      </p>
-      <div className="current-settings small text-secondary" style={{ marginTop: '0.5rem' }}>
-        Current: {settings.size} × {settings.size}, padding: {settings.padding}px
-      </div>
     </div>
   );
 }

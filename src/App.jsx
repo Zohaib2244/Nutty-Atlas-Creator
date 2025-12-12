@@ -14,7 +14,7 @@ import { renderAllAtlases } from './utils/atlasRenderer';
 function App() {
   const [mode, setMode] = useState('create'); // 'create' or 'edit'
   const [images, setImages] = useState([]);
-  const [settings, setSettings] = useState({ size: 1024, padding: 2, trim: false, previewBg: 'white' });
+  const [settings, setSettings] = useState({ size: 1024, padding: 2, trim: false });
   const [atlases, setAtlases] = useState([]);
   const [activeAtlasIndex, setActiveAtlasIndex] = useState(0);
   const [error, setError] = useState('');
@@ -117,6 +117,75 @@ function App() {
       const removedRegions = [...(prev.removedRegions || []), { x: placement.x, y: placement.y, width: placement.width, height: placement.height }];
       return { ...prev, placements: updatedPlacements, removedRegions };
     });
+  };
+
+  const handleReplacePlacement = (placement) => {
+    if (mode !== 'edit' || !existingAtlas) return;
+    
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const img = new Image();
+        const reader = new FileReader();
+        
+        reader.onload = (ev) => {
+          img.onload = () => {
+            // Validate dimensions match
+            if (img.width !== placement.width || img.height !== placement.height) {
+              setError(
+                `Dimension mismatch: Selected image is ${img.width}×${img.height}, but placement requires ${placement.width}×${placement.height}`
+              );
+              return;
+            }
+
+            // Create canvas to extract image data
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+
+            // Update the placement with new image data
+            setExistingAtlas((prev) => {
+              if (!prev) return prev;
+              const updatedPlacements = prev.placements.map((p) => {
+                if (
+                  p.name === placement.name &&
+                  p.x === placement.x &&
+                  p.y === placement.y &&
+                  p.width === placement.width &&
+                  p.height === placement.height
+                ) {
+                  return {
+                    ...p,
+                    imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
+                    canvas: canvas,
+                    name: file.name.replace(/\.[^/.]+$/, '')
+                  };
+                }
+                return p;
+              });
+              return { ...prev, placements: updatedPlacements };
+            });
+
+            setInfo(`✓ Replaced image with ${file.name}`);
+            setTimeout(() => setInfo(''), 3000);
+            setError('');
+          };
+          img.src = ev.target.result;
+        };
+        
+        reader.readAsDataURL(file);
+      } catch (err) {
+        setError(`Failed to load replacement image: ${err.message}`);
+      }
+    };
+    input.click();
   };
 
   const handlePack = () => {
@@ -325,11 +394,19 @@ function App() {
             <div className="preview-header">
               <h2>Preview</h2>
               {activeAtlas ? (
-                <span className="preview-info">
-                  Atlas {activeAtlasIndex + 1} / {atlases.length} — {activeAtlas.size}×{activeAtlas.size}
-                </span>
+                <div className="preview-meta">
+                  <span className="preview-info">
+                    Atlas {activeAtlasIndex + 1} / {atlases.length} — {activeAtlas.size}×{activeAtlas.size}
+                  </span>
+                  <span className="preview-divider">|</span>
+                  <span className="preview-subinfo">Padding: {settings.padding}px</span>
+                </div>
               ) : (
-                <span className="preview-info">Canvas: {settings.size}×{settings.size}</span>
+                <div className="preview-meta">
+                  <span className="preview-info">Canvas: {settings.size}×{settings.size}</span>
+                  <span className="preview-divider">|</span>
+                  <span className="preview-subinfo">Padding: {settings.padding}px</span>
+                </div>
               )}
               <div className="preview-actions">
                 <label className="preview-scale-label">
@@ -354,7 +431,6 @@ function App() {
             <PreviewCanvas
               atlas={activeAtlas}
               canvasSize={settings.size}
-              previewBg={settings.previewBg}
               previewScale={previewScale}
               selection={selectedPlacement && activeAtlas ? { ...selectedPlacement, size: activeAtlas.size } : null}
             />
@@ -375,7 +451,9 @@ function App() {
                 atlasIndex={activeAtlasIndex}
                 onSelect={handleSelectPlacement}
                 onDelete={handleDeletePlacement}
+                onReplace={handleReplacePlacement}
                 selected={selectedPlacement}
+                mode={mode}
               />
             </div>
             <div className="card">

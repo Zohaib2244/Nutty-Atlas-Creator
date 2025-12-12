@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 
-export default function PreviewCanvas({ atlas, canvasSize, previewBg = 'white', selection, previewScale = 1 }) {
+export default function PreviewCanvas({ atlas, canvasSize, selection, previewScale = 1 }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export default function PreviewCanvas({ atlas, canvasSize, previewBg = 'white', 
 
   return (
     <div className="preview-container">
-      <div className={`preview-stage preview-bg-${previewBg}`}>
+      <div className={`preview-stage preview-bg-transparent`}>
         <div className="preview-stage-visual" aria-hidden />
         <div className="preview-stage-inner">
           <div

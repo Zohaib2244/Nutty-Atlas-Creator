@@ -13,16 +13,6 @@ export default function ImageList({ images, onRemoveImage }) {
           <div key={idx} className="image-list-item">
             <span className="image-list-number">{idx + 1}.</span>
             <span className="image-list-name">{img.name}</span>
-            <span className="image-list-size">
-              {img.width}×{img.height}
-            </span>
-            <button
-              title="Remove image"
-              className="remove-image-btn"
-              onClick={() => onRemoveImage && onRemoveImage(idx)}
-            >
-              ✕
-            </button>
           </div>
         ))}
       </div>
