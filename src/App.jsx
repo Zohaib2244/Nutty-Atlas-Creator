@@ -13,7 +13,7 @@ import { renderAllAtlases } from './utils/atlasRenderer';
 function App() {
   const [mode, setMode] = useState('create'); // 'create' or 'edit'
   const [images, setImages] = useState([]);
-  const [settings, setSettings] = useState({ size: 1024, padding: 2, trim: false });
+  const [settings, setSettings] = useState({ size: 1024, padding: 2, trim: false, previewBg: 'white' });
   const [atlases, setAtlases] = useState([]);
   const [activeAtlasIndex, setActiveAtlasIndex] = useState(0);
   const [error, setError] = useState('');
@@ -66,7 +66,7 @@ function App() {
 
   const handleAtlasLoad = (atlasData) => {
     setExistingAtlas(atlasData);
-    setSettings({ size: atlasData.atlasSize, padding: atlasData.padding });
+    setSettings((prev) => ({ ...prev, size: atlasData.atlasSize, padding: atlasData.padding }));
     setInfo(`Loaded existing atlas with ${atlasData.placements.length} sprites. Add new images to extend it.`);
     setError('');
   };
@@ -107,6 +107,7 @@ function App() {
 
   // Auto-pack on images or settings change (debounced)
   const packTimer = useRef(null);
+  const { size, padding, trim } = settings;
   useEffect(() => {
     if (packTimer.current) clearTimeout(packTimer.current);
     packTimer.current = setTimeout(() => {
@@ -122,7 +123,7 @@ function App() {
       if (images.length === 0 && mode === 'edit' && existingAtlas) {
         // In edit mode with no new images, just show the existing atlas
         try {
-          const packed = packImages([], settings.size, settings.padding, 4096, 0, existingAtlas);
+          const packed = packImages([], size, padding, 4096, 0, existingAtlas);
           renderAllAtlases(packed);
           setAtlases(packed);
           setActiveAtlasIndex(0);
@@ -132,7 +133,7 @@ function App() {
         return;
       }
       try {
-        const packed = packImages(images, settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
+        const packed = packImages(images, size, padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
         renderAllAtlases(packed);
         setAtlases(packed);
         // If we recently added images, try to show the atlas that contains the
@@ -167,7 +168,7 @@ function App() {
       }
     }, 200);
     return () => clearTimeout(packTimer.current);
-  }, [images, settings, mode, existingAtlas]);
+  }, [images, size, padding, trim, mode, existingAtlas]);
 
   const activeAtlas = atlases[activeAtlasIndex];
 
@@ -255,7 +256,7 @@ function App() {
             {error && <div className="error-message">{error}</div>}
             {info && <div className="info-message">{info}</div>}
 
-            <PreviewCanvas atlas={activeAtlas} canvasSize={settings.size} />
+            <PreviewCanvas atlas={activeAtlas} canvasSize={settings.size} previewBg={settings.previewBg} />
             <AtlasPager
               atlases={atlases}
               activeIndex={activeAtlasIndex}

@@ -1,6 +1,11 @@
 import React from 'react';
 
 const ATLAS_SIZES = [128, 256, 512, 1024, 2048, 4096];
+const PREVIEW_BACKGROUNDS = [
+  { value: 'white', label: 'White' },
+  { value: 'black', label: 'Black' },
+  { value: 'transparent', label: 'Transparent' },
+];
 
 export default function AtlasSettings({ settings, onSettingsChange, disabled }) {
   const handleSizeChange = (e) => {
@@ -13,6 +18,11 @@ export default function AtlasSettings({ settings, onSettingsChange, disabled }) 
     const value = Math.max(0, parseInt(e.target.value || '0', 10));
     console.debug('Padding change:', value);
     onSettingsChange({ ...settings, padding: value });
+  };
+
+  const handlePreviewBgChange = (value) => {
+    console.debug('Preview background change:', value);
+    onSettingsChange({ ...settings, previewBg: value });
   };
 
   return (
@@ -72,6 +82,24 @@ export default function AtlasSettings({ settings, onSettingsChange, disabled }) 
           <span>Trim transparent pixels</span>
         </label>
         <p className="setting-description">Remove transparent areas to pack sprites tighter</p>
+      </div>
+      <div className="setting-group">
+        <label>Preview Background</label>
+        <div className="preview-bg-toggle" role="group" aria-label="Preview background options">
+          {PREVIEW_BACKGROUNDS.map((bg) => (
+            <button
+              key={bg.value}
+              type="button"
+              className={`bg-chip ${settings.previewBg === bg.value ? 'active' : ''} bg-${bg.value}`}
+              onClick={() => handlePreviewBgChange(bg.value)}
+              disabled={disabled}
+            >
+              <span className="bg-chip-swatch" aria-hidden />
+              <span>{bg.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="setting-description">Preview backdrop only — export stays transparent.</p>
       </div>
       {/* Auto-pack on change - no manual button needed */}
       <p className="small text-secondary" style={{ marginTop: '0.5rem' }}>
