@@ -48,8 +48,8 @@ export default function AtlasPlacementList({ atlas, atlasIndex = 0, onSelect, on
                   type="button"
                   className="remove-image-btn"
                   onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete && onDelete(p, atlasIndex, key);
+                      e.stopPropagation();
+                      onDelete && onDelete(p, atlasIndex, idx);
                   }}
                   title="Delete from atlas"
                 >

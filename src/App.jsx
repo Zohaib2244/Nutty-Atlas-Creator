@@ -99,22 +99,42 @@ function App() {
     setSelectedPlacement({ ...placement, size: targetAtlas.size, key });
   };
 
-  const handleDeletePlacement = (placement) => {
-    if (mode !== 'edit' || !existingAtlas) return;
+  const handleDeletePlacement = (placement, atlasIndex, placementIndex) => {
     setSelectedPlacement(null);
+
+    // If the placement is a newly added image (true for both create and edit modes), remove from images and repack
     if (placement.img) {
-      // Newly added in this session: remove from images to drop it from the atlas
-      setImages((prev) => prev.filter((img) => !(img.name === placement.name && img.width === placement.width && img.height === placement.height)));
+      setImages((prev) => {
+        const filtered = prev.filter((img) => !(img.name === placement.name && img.width === placement.width && img.height === placement.height));
+        try {
+          const packed = packImages(filtered, settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
+          renderAllAtlases(packed);
+          setAtlases(packed);
+          setActiveAtlasIndex(0);
+        } catch (err) {
+          console.error('Repack after removing image failed', err);
+        }
+        return filtered;
+      });
       return;
     }
+
+    // Non-new placements can only be removed in edit mode against an existing atlas
+    if (mode !== 'edit' || !existingAtlas) return;
     setExistingAtlas((prev) => {
       if (!prev) return prev;
-      const updatedPlacements = prev.placements.filter(
-        (p) =>
-          !(p.name === placement.name && p.x === placement.x && p.y === placement.y && p.width === placement.width && p.height === placement.height)
-      );
+      const updatedPlacements = prev.placements.filter((_, i) => i !== placementIndex);
       const removedRegions = [...(prev.removedRegions || []), { x: placement.x, y: placement.y, width: placement.width, height: placement.height }];
-      return { ...prev, placements: updatedPlacements, removedRegions };
+      const updated = { ...prev, placements: updatedPlacements, removedRegions };
+      try {
+        const packed = packImages(images, settings.size, settings.padding, 4096, 0, updated);
+        renderAllAtlases(packed);
+        setAtlases(packed);
+        setActiveAtlasIndex(0);
+      } catch (err) {
+        console.error('Repack after deletion failed', err);
+      }
+      return updated;
     });
   };
 
