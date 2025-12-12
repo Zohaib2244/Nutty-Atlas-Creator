@@ -11,14 +11,23 @@ export function renderAtlasToCanvas(atlas) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // If editing an existing atlas, draw the base image first
+  if (atlas.isEditing && atlas.baseImage) {
+    ctx.drawImage(atlas.baseImage, 0, 0, atlas.size, atlas.size);
+  }
+
+  // Draw placements (new images in edit mode, or all images in create mode)
   for (const placement of atlas.placements) {
-    ctx.drawImage(
-      placement.img,
-      placement.x,
-      placement.y,
-      placement.width,
-      placement.height
-    );
+    // Skip placements without img (existing placements from JSON)
+    if (placement.img) {
+      ctx.drawImage(
+        placement.img,
+        placement.x,
+        placement.y,
+        placement.width,
+        placement.height
+      );
+    }
   }
 
   atlas.canvas = canvas;

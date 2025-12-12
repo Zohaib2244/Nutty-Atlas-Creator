@@ -6,10 +6,12 @@ import PreviewCanvas from './components/PreviewCanvas';
 import AtlasPager from './components/AtlasPager';
 import JSONPreview from './components/JSONPreview';
 import ExportPanel from './components/ExportPanel';
+import AtlasUploader from './components/AtlasUploader';
 import { packImages } from './utils/atlasPacker';
 import { renderAllAtlases } from './utils/atlasRenderer';
 
 function App() {
+  const [mode, setMode] = useState('create'); // 'create' or 'edit'
   const [images, setImages] = useState([]);
   const [settings, setSettings] = useState({ size: 1024, padding: 2 });
   const [atlases, setAtlases] = useState([]);
@@ -17,6 +19,7 @@ function App() {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [lastAddedNames, setLastAddedNames] = useState([]);
+  const [existingAtlas, setExistingAtlas] = useState(null);
 
   const handleAddImages = (loadedImages) => {
     // Append new images; avoid duplicates by name
@@ -50,8 +53,29 @@ function App() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleAtlasLoad = (atlasData) => {
+    setExistingAtlas(atlasData);
+    setSettings({ size: atlasData.atlasSize, padding: atlasData.padding });
+    setInfo(`Loaded existing atlas with ${atlasData.placements.length} sprites. Add new images to extend it.`);
+    setError('');
+  };
+
+  const handleModeToggle = () => {
+    const newMode = mode === 'create' ? 'edit' : 'create';
+    setMode(newMode);
+    setImages([]);
+    setAtlases([]);
+    setExistingAtlas(null);
+    setError('');
+    setInfo('');
+  };
+
   const handlePack = () => {
-    if (images.length === 0) {
+    if (mode === 'edit' && !existingAtlas) {
+      setError('Please load an existing atlas first.');
+      return;
+    }
+    if (images.length === 0 && mode === 'create') {
       setError('Please upload images first.');
       return;
     }
@@ -59,7 +83,7 @@ function App() {
     setError('');
 
     try {
-      const packed = packImages(images, settings.size, settings.padding, 4096);
+      const packed = packImages(images, settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
       renderAllAtlases(packed);
       setAtlases(packed);
       setActiveAtlasIndex(0);
@@ -75,14 +99,29 @@ function App() {
   useEffect(() => {
     if (packTimer.current) clearTimeout(packTimer.current);
     packTimer.current = setTimeout(() => {
-      if (images.length === 0) {
+      if (mode === 'edit' && !existingAtlas) {
+        return; // Wait for atlas to be loaded
+      }
+      if (images.length === 0 && mode === 'create') {
         setAtlases([]);
         setActiveAtlasIndex(0);
         setError('');
         return;
       }
+      if (images.length === 0 && mode === 'edit' && existingAtlas) {
+        // In edit mode with no new images, just show the existing atlas
+        try {
+          const packed = packImages([], settings.size, settings.padding, 4096, 0, existingAtlas);
+          renderAllAtlases(packed);
+          setAtlases(packed);
+          setActiveAtlasIndex(0);
+        } catch (err) {
+          console.error('Packing error:', err);
+        }
+        return;
+      }
       try {
-        const packed = packImages(images, settings.size, settings.padding, 4096);
+        const packed = packImages(images, settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
         renderAllAtlases(packed);
         setAtlases(packed);
         // If we recently added images, try to show the atlas that contains the
@@ -117,7 +156,7 @@ function App() {
       }
     }, 200);
     return () => clearTimeout(packTimer.current);
-  }, [images, settings]);
+  }, [images, settings, mode, existingAtlas]);
 
   const activeAtlas = atlases[activeAtlasIndex];
 
@@ -125,29 +164,57 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Nutty Atlas Creator</h1>
+        <div className="mode-toggle" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ fontSize: '0.9rem', color: mode === 'create' ? '#4a90e2' : '#888' }}>Create</span>
+          <button
+            className="btn btn-secondary"
+            onClick={handleModeToggle}
+            style={{ padding: '0.5rem 1rem' }}
+          >
+            {mode === 'create' ? 'Switch to Edit Mode' : 'Switch to Create Mode'}
+          </button>
+          <span style={{ fontSize: '0.9rem', color: mode === 'edit' ? '#4a90e2' : '#888' }}>Edit</span>
+        </div>
       </header>
 
       <main className="app-main">
         <aside className="sidebar">
+          {mode === 'edit' && (
+            <section className="card">
+              <h2>1. Load Existing Atlas</h2>
+              <AtlasUploader onAtlasLoad={handleAtlasLoad} />
+              {existingAtlas && (
+                <div className="existing-atlas-info" style={{ marginTop: '1rem', padding: '0.5rem', background: '#f0f0f0', borderRadius: '4px' }}>
+                  <strong>Loaded:</strong> {existingAtlas.placements.length} sprites, {existingAtlas.atlasSize}×{existingAtlas.atlasSize}
+                </div>
+              )}
+            </section>
+          )}
+
           <section className="card">
-            <h2>1. Images</h2>
+            <h2>{mode === 'edit' ? '2' : '1'}. Images</h2>
             <ImageUploader onAddImages={handleAddImages} />
             <ImageList images={images} onRemoveImage={handleRemoveImage} />
           </section>
 
           <section className="card">
-            <h2>2. Settings</h2>
+            <h2>{mode === 'edit' ? '3' : '2'}. Settings</h2>
             <AtlasSettings
               settings={settings}
               onSettingsChange={setSettings}
               onPack={handlePack}
-              disabled={false}
+              disabled={mode === 'edit' && !existingAtlas}
             />
+            {mode === 'edit' && existingAtlas && (
+              <div className="info-message" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+                Note: Settings loaded from existing atlas. New sprites will use these settings.
+              </div>
+            )}
           </section>
 
           <section className="card">
-            <h2>3. Export</h2>
-            <ExportPanel atlases={atlases} disabled={atlases.length === 0} />
+            <h2>{mode === 'edit' ? '4' : '3'}. Export</h2>
+            <ExportPanel atlases={atlases} disabled={atlases.length === 0} existingAtlas={existingAtlas} />
           </section>
         </aside>
 

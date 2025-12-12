@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { exportAtlasesAsZip, triggerDownload } from '../utils/exporter';
 
-export default function ExportPanel({ atlases, disabled }) {
+export default function ExportPanel({ atlases, disabled, existingAtlas }) {
   const [status, setStatus] = useState('');
 
   const handleExport = async () => {
@@ -13,7 +13,7 @@ export default function ExportPanel({ atlases, disabled }) {
     setStatus('Preparing ZIP...');
 
     try {
-      const zipBlob = await exportAtlasesAsZip(atlases);
+      const zipBlob = await exportAtlasesAsZip(atlases, existingAtlas);
       triggerDownload(zipBlob, 'nutty_atlas_pack.zip');
       setStatus('Download started!');
       setTimeout(() => setStatus(''), 3000);

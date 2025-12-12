@@ -27,12 +27,68 @@ function createEmptyAtlas(size, padding, index) {
  */
 /**
  * Pack images into one or more atlases
+ * @param {Array} images - New images to pack
+ * @param {number} atlasSize
+ * @param {number} padding
+ * @param {number} maxAtlasSize
+ * @param {number} attempt
+ * @param {Object} existingAtlas - Optional existing atlas with placements to add to
+ * @returns {Array} atlases
  */
-export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, attempt = 0) {
+export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, attempt = 0, existingAtlas = null) {
   const atlases = [];
 
   function createFreeRect() {
     return { x: 0, y: 0, width: atlasSize, height: atlasSize };
+  }
+
+  function computeFreeRectsFromPlacements(placements, size, pad) {
+    // Start with entire atlas as free
+    let freeRects = [{ x: 0, y: 0, width: size, height: size }];
+
+    // For each existing placement, subtract its used area from free rects
+    for (const p of placements) {
+      const usedRect = { x: p.x, y: p.y, width: p.width + pad, height: p.height + pad };
+      const newFreeRects = [];
+
+      for (const fr of freeRects) {
+        if (rectsIntersect(fr, usedRect)) {
+          // Split free rect by used rect
+          if (fr.x < usedRect.x) {
+            newFreeRects.push({ x: fr.x, y: fr.y, width: usedRect.x - fr.x, height: fr.height });
+          }
+          if (fr.x + fr.width > usedRect.x + usedRect.width) {
+            newFreeRects.push({ x: usedRect.x + usedRect.width, y: fr.y, width: (fr.x + fr.width) - (usedRect.x + usedRect.width), height: fr.height });
+          }
+          if (fr.y < usedRect.y) {
+            newFreeRects.push({ x: fr.x, y: fr.y, width: fr.width, height: usedRect.y - fr.y });
+          }
+          if (fr.y + fr.height > usedRect.y + usedRect.height) {
+            newFreeRects.push({ x: fr.x, y: usedRect.y + usedRect.height, width: fr.width, height: (fr.y + fr.height) - (usedRect.y + usedRect.height) });
+          }
+        } else {
+          newFreeRects.push(fr);
+        }
+      }
+
+      // Prune contained rects
+      freeRects = [];
+      for (let i = 0; i < newFreeRects.length; i++) {
+        const a = newFreeRects[i];
+        let isContained = false;
+        for (let j = 0; j < newFreeRects.length; j++) {
+          if (i === j) continue;
+          const b = newFreeRects[j];
+          if (a.x >= b.x && a.y >= b.y && a.x + a.width <= b.x + b.width && a.y + a.height <= b.y + b.height) {
+            isContained = true;
+            break;
+          }
+        }
+        if (!isContained) freeRects.push(a);
+      }
+    }
+
+    return freeRects;
   }
 
   function rectsIntersect(a, b) {
@@ -131,6 +187,16 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
     }
 
     return true;
+  }
+
+  // If editing an existing atlas, initialize with existing placements
+  if (existingAtlas) {
+    const editAtlas = createEmptyAtlas(atlasSize, padding, 0);
+    editAtlas.placements = [...existingAtlas.placements];
+    editAtlas.freeRects = computeFreeRectsFromPlacements(existingAtlas.placements, atlasSize, padding);
+    editAtlas.isEditing = true;
+    editAtlas.baseImage = existingAtlas.img;
+    atlases.push(editAtlas);
   }
 
   for (const img of images) {

@@ -4,23 +4,59 @@ import JSZip from 'jszip';
  * Build JSON metadata for a single atlas
  * @param {Object} atlas
  * @param {number} index
+ * @param {Object} existingJson - Optional existing JSON to merge with (for edit mode)
  * @returns {Object}
  */
-export function buildAtlasJSON(atlas, index) {
-  const base = {
-    atlasIndex: index,
-    size: atlas.size,
-    padding: atlas.padding,
-    sprites: atlas.placements.map((p) => ({
-      name: p.name,
-      x: p.x,
-      y: p.y,
-      width: p.width,
-      height: p.height,
-    })),
+export function buildAtlasJSON(atlas, index, existingJson = null) {
+  // If editing and we have existing JSON, merge frames
+  if (atlas.isEditing && existingJson) {
+    const frames = { ...existingJson.frames };
+    
+    // Add new placements to frames (only those with img, meaning they're new)
+    for (const p of atlas.placements) {
+      if (p.img) {
+        frames[p.name] = {
+          frame: { x: p.x, y: p.y, w: p.width, h: p.height },
+          rotated: false,
+          trimmed: false,
+          spriteSourceSize: { x: 0, y: 0, w: p.width, h: p.height },
+          sourceSize: { w: p.width, h: p.height },
+        };
+      }
+    }
+    
+    return {
+      frames,
+      meta: {
+        ...existingJson.meta,
+        size: { w: atlas.size, h: atlas.size },
+        padding: atlas.padding,
+      },
+    };
+  }
+
+  // Standard format for create mode
+  const frames = {};
+  for (const p of atlas.placements) {
+    frames[p.name] = {
+      frame: { x: p.x, y: p.y, w: p.width, h: p.height },
+      rotated: false,
+      trimmed: false,
+      spriteSourceSize: { x: 0, y: 0, w: p.width, h: p.height },
+      sourceSize: { w: p.width, h: p.height },
+    };
+  }
+
+  return {
+    frames,
+    meta: {
+      app: 'Nutty Atlas Creator',
+      version: '1.0',
+      size: { w: atlas.size, h: atlas.size },
+      padding: atlas.padding,
+      format: 'RGBA8888',
+    },
   };
-  if (atlas.note) base.note = atlas.note;
-  return base;
 }
 
 /**
@@ -43,9 +79,10 @@ function canvasToBlob(canvas) {
 /**
  * Export all atlases as a ZIP file
  * @param {Array} atlases
+ * @param {Object} existingAtlas - Optional existing atlas data (for edit mode)
  * @returns {Promise<Blob>}
  */
-export async function exportAtlasesAsZip(atlases) {
+export async function exportAtlasesAsZip(atlases, existingAtlas = null) {
   const zip = new JSZip();
   const meta = { atlases: [] };
 
@@ -53,10 +90,15 @@ export async function exportAtlasesAsZip(atlases) {
     const atlas = atlases[i];
     const baseName = `atlas_${i + 1}`;
 
-    const json = buildAtlasJSON(atlas, i);
+    // Pass existing JSON if editing
+    const existingJson = (atlas.isEditing && existingAtlas) ? existingAtlas.originalJson : null;
+    const json = buildAtlasJSON(atlas, i, existingJson);
+    
     meta.atlases.push({
       name: baseName,
-      ...json,
+      size: atlas.size,
+      padding: atlas.padding,
+      spriteCount: Object.keys(json.frames || json.sprites || {}).length,
     });
 
     const pngBlob = await canvasToBlob(atlas.canvas);
