@@ -154,20 +154,12 @@ function App() {
         
         reader.onload = (ev) => {
           img.onload = () => {
-            // Validate dimensions match
-            if (img.width !== placement.width || img.height !== placement.height) {
-              setError(
-                `Dimension mismatch: Selected image is ${img.width}×${img.height}, but placement requires ${placement.width}×${placement.height}`
-              );
-              return;
-            }
-
-            // Create canvas to extract image data
+            // Create canvas to extract image data, scaling to fit the placement dimensions
             const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
+            canvas.width = placement.width;
+            canvas.height = placement.height;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
+            ctx.drawImage(img, 0, 0, placement.width, placement.height);
 
             // Update the placement with new image data
             setExistingAtlas((prev) => {
