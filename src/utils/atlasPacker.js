@@ -19,24 +19,18 @@ function createEmptyAtlas(size, padding, index) {
 }
 
 /**
- * Pack images into one or more atlases
+ * Pack images into one or more atlases using optimal repacking when needed
  * @param {Array} images - [{name, img, width, height}]
- * @param {number} atlasSize
- * @param {number} padding
- * @returns {Array} atlases - [{index, size, padding, placements, root, canvas}]
- */
-/**
- * Pack images into one or more atlases
- * @param {Array} images - New images to pack
  * @param {number} atlasSize
  * @param {number} padding
  * @param {number} maxAtlasSize
  * @param {number} attempt
  * @param {Object} existingAtlas - Optional existing atlas with placements to add to
- * @returns {Array} atlases
+ * @returns {Array} atlases - [{index, size, padding, placements, root, canvas}]
  */
 export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, attempt = 0, existingAtlas = null) {
   const atlases = [];
+  const isEditMode = existingAtlas !== null;
 
   function createFreeRect() {
     return { x: 0, y: 0, width: atlasSize, height: atlasSize };
@@ -197,6 +191,43 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
     return true;
   }
 
+  /**
+   * Pack a set of images optimally into atlases from scratch
+   * Uses area-descending sort for better packing efficiency
+   */
+  function packOptimally(allImages) {
+    // Sort by area descending for better packing
+    const sorted = [...allImages].sort((a, b) => (b.width * b.height) - (a.width * a.height));
+    
+    const optimalAtlases = [];
+    
+    for (const img of sorted) {
+      if (img.width + padding > atlasSize || img.height + padding > atlasSize) {
+        throw new Error(`Image "${img.name}" (${img.width}x${img.height}) is too large for the selected atlas size ${atlasSize}x${atlasSize} with padding ${padding}.`);
+      }
+
+      let placed = false;
+      for (const atlas of optimalAtlases) {
+        if (tryPlaceInAtlas(atlas, img)) {
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        const newAtlas = createEmptyAtlas(atlasSize, padding, optimalAtlases.length);
+        newAtlas.freeRects = [createFreeRect()];
+        newAtlas.placements = [];
+        if (!tryPlaceInAtlas(newAtlas, img)) {
+          throw new Error(`Failed to place image '${img.name}' in a fresh atlas`);
+        }
+        optimalAtlases.push(newAtlas);
+      }
+    }
+    
+    return optimalAtlases;
+  }
+
   // If editing an existing atlas, initialize with existing placements
   if (existingAtlas) {
     const editAtlas = createEmptyAtlas(atlasSize, padding, 0);
@@ -208,6 +239,10 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
     atlases.push(editAtlas);
   }
 
+  // First pass: try to place images incrementally
+  let needsRepack = false;
+  const unplacedImages = [];
+
   for (const img of images) {
     // Check if image is oversized vs atlasSize
     if (img.width + padding > atlasSize || img.height + padding > atlasSize) {
@@ -215,6 +250,65 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
     }
 
     // Try to place into existing atlases
+    let placed = false;
+    for (const atlas of atlases) {
+      if (tryPlaceInAtlas(atlas, img)) {
+        placed = true;
+        break;
+      }
+    }
+
+    if (!placed) {
+      unplacedImages.push(img);
+    }
+  }
+
+  // If we have unplaced images in create mode, try optimal repacking
+  if (unplacedImages.length > 0 && !isEditMode && attempt < 2) {
+    // Collect all images (already placed + unplaced) for optimal repacking
+    const allImages = [];
+    
+    // Get images from current atlases
+    for (const atlas of atlases) {
+      for (const p of atlas.placements) {
+        if (p.img) { // Only include images that have actual image data (not existing placements from edit mode)
+          allImages.push({
+            name: p.name,
+            img: p.img,
+            width: p.width,
+            height: p.height,
+            trimData: p.trimData,
+          });
+        }
+      }
+    }
+    
+    // Add unplaced images
+    allImages.push(...unplacedImages);
+    
+    // Try optimal repacking
+    try {
+      const optimalResult = packOptimally(allImages);
+      
+      // Check if optimal packing uses fewer or equal atlases
+      if (optimalResult.length <= atlases.length + Math.ceil(unplacedImages.length / 10)) {
+        // Use the optimal result
+        return optimalResult.map((a, i) => ({
+          ...a,
+          index: i,
+          root: null,
+          canvas: null,
+        }));
+      }
+    } catch (e) {
+      // Optimal packing failed, continue with incremental approach
+      console.warn('Optimal repacking failed, using incremental approach:', e.message);
+    }
+  }
+
+  // Incremental placement for remaining unplaced images
+  for (const img of unplacedImages) {
+    // Try to place into existing atlases one more time
     let placed = false;
     for (const atlas of atlases) {
       if (tryPlaceInAtlas(atlas, img)) {
@@ -264,11 +358,11 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
     // Try fallback: pack larger sprites first (area desc) to reduce fragmentation
     const imagesSorted = [...images].sort((a, b) => b.width * b.height - a.width * a.height);
     if (imagesSorted.length !== images.length) return atlases; // should not happen
-    if (attempt >= 1) {
+    if (attempt >= 2) {
       throw new Error('Packing failed: overlapping placements detected even after fallback sorting');
     }
-    // Recreate atlas by calling packImages recursively with sorted images but avoid infinite recursion: only once
-    return packImages(imagesSorted, atlasSize, padding, maxAtlasSize, attempt + 1);
+    // Recreate atlas by calling packImages recursively with sorted images but avoid infinite recursion
+    return packImages(imagesSorted, atlasSize, padding, maxAtlasSize, attempt + 1, existingAtlas);
   }
 
   return atlases;

@@ -10,6 +10,7 @@ import AtlasUploader from './components/AtlasUploader';
 import AtlasPlacementList from './components/AtlasPlacementList';
 import { packImages } from './utils/atlasPacker';
 import { renderAllAtlases } from './utils/atlasRenderer';
+import { applyTrimToImage, removeTrimFromImage } from './utils/imageLoader';
 
 function App() {
   const [mode, setMode] = useState('create'); // 'create' or 'edit'
@@ -17,16 +18,34 @@ function App() {
   const [settings, setSettings] = useState({ size: 1024, padding: 2, trim: false });
   const [atlases, setAtlases] = useState([]);
   const [activeAtlasIndex, setActiveAtlasIndex] = useState(0);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState([]); // Array of error messages for persistence
   const [info, setInfo] = useState('');
   const [lastAddedNames, setLastAddedNames] = useState([]);
   const [existingAtlas, setExistingAtlas] = useState(null);
   const [selectedPlacement, setSelectedPlacement] = useState(null);
   const [leftTab, setLeftTab] = useState('images'); // images | settings | export
+  const [prevTrim, setPrevTrim] = useState(false); // Track previous trim state
+
+  // Helper to add error
+  const addError = (message) => {
+    setErrors((prev) => {
+      // Avoid duplicates
+      if (prev.includes(message)) return prev;
+      return [...prev, message];
+    });
+  };
+
+  // Helper to clear all errors
+  const clearErrors = () => setErrors([]);
+
+  // Helper to remove a specific error
+  const removeError = (index) => {
+    setErrors((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleAddImages = (loadedImages) => {
     // Append new images; avoid duplicates by name
-    setError('');
+    clearErrors();
     setInfo('');
     setImages((prev) => {
       const existingNames = new Set(prev.map((it) => it.name));
@@ -37,11 +56,9 @@ function App() {
         (it) => it.width + settings.padding > settings.size || it.height + settings.padding > settings.size
       );
       if (rejected.length) {
-        setError(
-          `The following image(s) are larger than selected atlas ${settings.size}×${settings.size}: ${rejected
-            .map((r) => r.name)
-            .join(', ')}`
-        );
+        rejected.forEach((r) => {
+          addError(`Image "${r.name}" (${r.width}x${r.height}) is larger than atlas ${settings.size}×${settings.size}`);
+        });
       }
       // Only keep images that fit
       const accepted = filtered.filter(
@@ -71,7 +88,7 @@ function App() {
     setExistingAtlas({ ...atlasData, removedRegions: [] });
     setSettings((prev) => ({ ...prev, size: atlasData.atlasSize, padding: atlasData.padding }));
     setInfo(`Loaded existing atlas with ${atlasData.placements.length} sprites. Add new images to extend it.`);
-    setError('');
+    clearErrors();
   };
 
   const handleModeToggle = () => {
@@ -81,7 +98,7 @@ function App() {
     setAtlases([]);
     setExistingAtlas(null);
     setSelectedPlacement(null);
-    setError('');
+    clearErrors();
     setInfo('');
     // Reset left tab to images when switching modes
     setLeftTab('images');
@@ -201,15 +218,15 @@ function App() {
 
   const handlePack = () => {
     if (mode === 'edit' && !existingAtlas) {
-      setError('Please load an existing atlas first.');
+      addError('Please load an existing atlas first.');
       return;
     }
     if (images.length === 0 && mode === 'create') {
-      setError('Please upload images first.');
+      addError('Please upload images first.');
       return;
     }
 
-    setError('');
+    clearErrors();
     setSelectedPlacement(null);
 
     try {
@@ -219,10 +236,62 @@ function App() {
       setActiveAtlasIndex(0);
     } catch (err) {
       console.error('Packing error:', err);
-      setError(err.message);
+      addError(err.message);
       setAtlases([]);
     }
   };
+
+  // Dynamic trim effect - apply/remove trim when toggle changes
+  useEffect(() => {
+    if (images.length === 0) {
+      setPrevTrim(settings.trim);
+      return;
+    }
+    
+    if (settings.trim !== prevTrim) {
+      const applyTrimChanges = async () => {
+        try {
+          let updatedImages;
+          if (settings.trim) {
+            // Apply trim to all images
+            updatedImages = await Promise.all(images.map(applyTrimToImage));
+            const trimmedCount = updatedImages.filter(img => img.trimData?.trimmed).length;
+            if (trimmedCount > 0) {
+              setInfo(`✂️ Trimmed ${trimmedCount} image${trimmedCount > 1 ? 's' : ''}`);
+              setTimeout(() => setInfo(''), 3000);
+            }
+          } else {
+            // Remove trim from all images
+            updatedImages = images.map(removeTrimFromImage);
+            setInfo('Trim removed - images restored to original size');
+            setTimeout(() => setInfo(''), 3000);
+          }
+          
+          // Check for oversized images after trim change
+          const rejected = updatedImages.filter(
+            (it) => it.width + settings.padding > settings.size || it.height + settings.padding > settings.size
+          );
+          if (rejected.length) {
+            rejected.forEach((r) => {
+              addError(`Image "${r.name}" (${r.width}x${r.height}) is now larger than atlas ${settings.size}×${settings.size}`);
+            });
+            // Filter out oversized images
+            updatedImages = updatedImages.filter(
+              (it) => it.width + settings.padding <= settings.size && it.height + settings.padding <= settings.size
+            );
+          }
+          
+          setImages(updatedImages);
+        } catch (err) {
+          console.error('Error applying trim changes:', err);
+          addError('Failed to apply trim changes');
+        }
+      };
+      
+      applyTrimChanges();
+      setPrevTrim(settings.trim);
+    }
+  }, [settings.trim]);
 
   // Auto-pack on images or settings change (debounced)
   const packTimer = useRef(null);
@@ -236,7 +305,7 @@ function App() {
       if (images.length === 0 && mode === 'create') {
         setAtlases([]);
         setActiveAtlasIndex(0);
-        setError('');
+        clearErrors();
         setSelectedPlacement(null);
         return;
       }
@@ -282,10 +351,10 @@ function App() {
         } else {
           setInfo('');
         }
-        setError('');
+        // Don't clear errors here - let them persist
       } catch (err) {
         console.error('Packing error:', err);
-        setError(err.message);
+        addError(err.message);
         setAtlases([]);
       }
     }, 200);
@@ -429,7 +498,30 @@ function App() {
               {/* Static preview area — scale controls removed */}
             </div>
 
-            {error && <div className="error-message">{error}</div>}
+            {errors.length > 0 && (
+              <div className="error-messages-container">
+                <div className="error-messages-header">
+                  <span>⚠️ Errors ({errors.length})</span>
+                  <button className="clear-errors-btn" onClick={clearErrors} title="Clear all errors">
+                    ✕ Clear All
+                  </button>
+                </div>
+                <div className="error-messages-list">
+                  {errors.map((err, index) => (
+                    <div key={index} className="error-message-item">
+                      <span>{err}</span>
+                      <button 
+                        className="dismiss-error-btn" 
+                        onClick={() => removeError(index)}
+                        title="Dismiss"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {info && <div className="info-message">{info}</div>}
 
             {/* pager moved into header */}

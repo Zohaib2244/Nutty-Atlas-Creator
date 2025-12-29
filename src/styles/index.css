@@ -29,7 +29,7 @@ body {
 
 html, body {
   height: 100%;
-  overflow: hidden; /* prevent body scroll; main will manage scrolling */
+  overflow: auto; /* allow page scrolling; main will still manage internal scrolling */
 }
 
 .app {
@@ -248,6 +248,119 @@ html, body {
 /* Image Uploader */
 .image-uploader {
   margin-bottom: 1rem;
+}
+
+/* Atlas Uploader - Drag & Drop */
+.atlas-uploader {
+  margin-bottom: 0.5rem;
+}
+
+.atlas-drop-zones {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.atlas-drop-zone {
+  border: 2px dashed var(--drop-zone-border);
+  border-radius: 0.5rem;
+  background: var(--drop-zone-bg);
+  padding: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.atlas-drop-zone:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-input);
+}
+
+.atlas-drop-zone.dragging {
+  border-color: var(--drop-zone-active);
+  background: var(--bg-input);
+  border-style: solid;
+  box-shadow: 0 0 10px rgba(74, 158, 255, 0.3);
+}
+
+.atlas-drop-zone.has-file {
+  border-style: solid;
+  border-color: var(--accent-success);
+  background: rgba(76, 175, 80, 0.08);
+}
+
+.atlas-drop-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.atlas-drop-content svg {
+  opacity: 0.5;
+}
+
+.atlas-drop-content span {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.atlas-drop-content small {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.atlas-file-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--accent-success);
+  text-align: center;
+  position: relative;
+  width: 100%;
+}
+
+.atlas-file-info svg {
+  opacity: 0.8;
+}
+
+.atlas-file-info .file-name {
+  font-size: 0.75rem;
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clear-file-btn {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  background: rgba(244, 67, 54, 0.8);
+  border: none;
+  color: white;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.clear-file-btn:hover {
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .drop-zone {
@@ -617,6 +730,83 @@ html, body {
   margin-bottom: 1rem;
 }
 
+.error-messages-container {
+  background: rgba(244, 67, 54, 0.1);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.error-messages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: rgba(244, 67, 54, 0.15);
+  border-bottom: 1px solid rgba(244, 67, 54, 0.2);
+  color: #ff6b6b;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.clear-errors-btn {
+  background: rgba(244, 67, 54, 0.2);
+  border: 1px solid rgba(244, 67, 54, 0.4);
+  color: #ff6b6b;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-errors-btn:hover {
+  background: rgba(244, 67, 54, 0.35);
+  border-color: rgba(244, 67, 54, 0.6);
+}
+
+.error-messages-list {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.error-message-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  color: #ff6b6b;
+  font-size: 0.8rem;
+  border-bottom: 1px solid rgba(244, 67, 54, 0.15);
+}
+
+.error-message-item:last-child {
+  border-bottom: none;
+}
+
+.error-message-item span {
+  flex: 1;
+  word-break: break-word;
+}
+
+.dismiss-error-btn {
+  background: transparent;
+  border: none;
+  color: #ff6b6b;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.75rem;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.dismiss-error-btn:hover {
+  opacity: 1;
+}
+
 .info-message {
   padding: 0.75rem;
   background: rgba(74, 158, 255, 0.06);
@@ -677,6 +867,48 @@ html, body {
   overflow: auto; /* allow internal scrolling without page scroll */
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.preview-stage.scrollable .preview-stage-inner {
+  overflow: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.preview-zoom-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.zoom-btn {
+  padding: 0.35rem 0.65rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  color: var(--text-primary);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.zoom-btn:hover {
+  background: var(--border-color);
+  border-color: var(--accent-primary);
+}
+
+.zoom-btn.zoom-reset {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.zoom-level {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-width: 50px;
+  text-align: center;
 }
 
 
