@@ -58,17 +58,27 @@ export default function AtlasSettings({ settings, onSettingsChange, disabled }) 
       </div>
       <div className="setting-group">
         <label className="toggle-label">
-          <input
-            type="checkbox"
-            checked={settings.trim || false}
-            onChange={(e) => {
-              console.debug('Trim mode change:', e.target.checked);
-              onSettingsChange({ ...settings, trim: e.target.checked });
-            }}
-            disabled={disabled}
-            style={{ marginRight: '0.5rem' }}
-          />
-          <span>Trim transparent pixels</span>
+          <div className="mode-toggle-container" style={{ gap: '.4rem' }}>
+            <button
+              type="button"
+              className={`mode-option ${!settings.trim ? 'active' : ''}`}
+              onClick={() => !disabled && onSettingsChange({ ...settings, trim: false })}
+              aria-pressed={!settings.trim}
+              title="Disable Trim"
+            >
+              Off
+            </button>
+            <button
+              type="button"
+              className={`mode-option ${settings.trim ? 'active' : ''}`}
+              onClick={() => !disabled && onSettingsChange({ ...settings, trim: true })}
+              aria-pressed={settings.trim}
+              title="Enable Trim"
+            >
+              ✂️ Trim
+            </button>
+            <div className={`mode-slider ${settings.trim ? 'right' : ''}`} />
+          </div>
         </label>
         <p className="setting-description">Remove transparent areas to pack sprites tighter</p>
       </div>
