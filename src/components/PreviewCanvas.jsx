@@ -4,7 +4,8 @@ export default function PreviewCanvas({ atlas, canvasSize, selection }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(0.95);
+  const MIN_ZOOM = 0.05;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -16,6 +17,9 @@ export default function PreviewCanvas({ atlas, canvasSize, selection }) {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (atlas && atlas.canvas) ctx.drawImage(atlas.canvas, 0, 0);
+    
+    // Reset pan when atlas changes
+    setPan({ x: 0, y: 0 });
   }, [atlas, canvasSize]);
 
   useEffect(() => {
@@ -24,74 +28,154 @@ export default function PreviewCanvas({ atlas, canvasSize, selection }) {
     return () => window.removeEventListener('resize', handler);
   }, []);
 
-  // Handle mouse wheel zoom
+  // Wheel zoom (with prevention of page scroll/zoom)
   const handleWheel = (e) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
+      e.stopPropagation();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom((prev) => Math.min(4, Math.max(0.25, prev + delta)));
+      setZoom((prev) => Math.min(4, Math.max(MIN_ZOOM, prev + delta)));
     }
   };
 
-  const size = atlas && atlas.size ? atlas.size : canvasSize || 1024;
-  // Static display size (px). This is a fixed square preview area.
-  const STATIC_DISPLAY_SIZE = 800;
-  // Normalize to fit viewport safely (ensure it doesn't overflow pager area)
-  const maxDisplaySize = Math.min(
-    STATIC_DISPLAY_SIZE,
-    Math.floor(viewport.height * 0.9),
-    Math.floor(viewport.width * 0.9)
-  );
+  // Attach a non-passive wheel listener directly to the container to ensure preventDefault works
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const wheelFn = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        setZoom((prev) => Math.min(4, Math.max(MIN_ZOOM, prev + delta)));
+      }
+    };
+    el.addEventListener('wheel', wheelFn, { passive: false });
+    return () => el.removeEventListener('wheel', wheelFn);
+  }, []);
 
-  // Determine if canvas is "big" and needs scrolling (larger than display area)
-  const needsScrolling = size > maxDisplaySize || zoom > 1;
-  const displayWidth = Math.max(size * zoom, maxDisplaySize);
-  const displayHeight = Math.max(size * zoom, maxDisplaySize);
+  // Panning with Right-click
+  const [isPanning, setIsPanning] = useState(false);
+  const isPanningRef = useRef(false);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const panRef = useRef({ startX: 0, startY: 0, startPanX: 0, startPanY: 0, currentX: 0, currentY: 0 });
+
+  // Keep ref in sync with state for use in listeners without re-binding
+  useEffect(() => {
+    panRef.current.currentX = pan.x;
+    panRef.current.currentY = pan.y;
+  }, [pan.x, pan.y]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onMouseDown = (e) => {
+      // Right mouse button (2) to start panning
+      if (e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        isPanningRef.current = true;
+        setIsPanning(true);
+        panRef.current.startX = e.clientX;
+        panRef.current.startY = e.clientY;
+        panRef.current.startPanX = panRef.current.currentX;
+        panRef.current.startPanY = panRef.current.currentY;
+        document.body.classList.add('no-select');
+      }
+    };
+
+    const onMouseMove = (e) => {
+      if (!isPanningRef.current) return;
+      e.preventDefault();
+      const dx = e.clientX - panRef.current.startX;
+      const dy = e.clientY - panRef.current.startY;
+      
+      setPan({
+        x: panRef.current.startPanX + dx,
+        y: panRef.current.startPanY + dy,
+      });
+    };
+
+    const onMouseUp = () => {
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        setIsPanning(false);
+        document.body.classList.remove('no-select');
+      }
+    };
+
+    const onContextMenu = (e) => {
+      // Prevent the context menu when using right-click to pan
+      e.preventDefault();
+    };
+
+    el.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove, { passive: false });
+    window.addEventListener('mouseup', onMouseUp);
+    el.addEventListener('contextmenu', onContextMenu);
+
+    return () => {
+      el.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      el.removeEventListener('contextmenu', onContextMenu);
+      document.body.classList.remove('no-select');
+    };
+  }, []); // No dependencies, listeners are stable
+
+  const size = atlas && atlas.size ? atlas.size : canvasSize || 1024;
 
   return (
     <div className="preview-container">
-      <div className={`preview-stage preview-bg-transparent ${needsScrolling ? 'scrollable' : ''}`}>
+      <div className={`preview-stage preview-bg-transparent ${isPanning ? 'panning' : ''}`}>
         <div className="preview-stage-visual" aria-hidden />
         <div 
           className="preview-stage-inner"
           ref={containerRef}
-          onWheel={handleWheel}
         >
           <div
             className="preview-canvas-wrapper"
             style={{ 
-              width: needsScrolling ? `${size * zoom}px` : '100%',
-              height: needsScrolling ? `${size * zoom}px` : '100%',
-              maxWidth: needsScrolling ? 'none' : `${maxDisplaySize}px`, 
-              maxHeight: needsScrolling ? 'none' : `${maxDisplaySize}px`,
-              flexShrink: needsScrolling ? 0 : 1,
+              width: '100%',
+              height: '100%',
+              flexShrink: 0,
             }}
           >
-            <canvas
-              ref={canvasRef}
-              className="preview-canvas"
-              style={{ width: '100%', height: '100%' }}
-            />
-            {selection && selection.size ? (
-              <div className="preview-overlay" aria-hidden>
-                <div
-                  className="preview-selection"
-                  style={{
-                    left: `${(selection.x / selection.size) * 100}%`,
-                    top: `${(selection.y / selection.size) * 100}%`,
-                    width: `${(selection.width / selection.size) * 100}%`,
-                    height: `${(selection.height / selection.size) * 100}%`,
-                  }}
-                />
-              </div>
-            ) : null}
+            <div
+              className="preview-zoom-layer"
+              style={{
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                transformOrigin: 'center center',
+                transition: isPanning ? 'none' : 'transform 0.1s ease-out',
+              }}
+            >
+              <canvas
+                ref={canvasRef}
+                className="preview-canvas"
+                style={{ width: '100%', height: '100%' }}
+              />
+              {selection && selection.size ? (
+                <div className="preview-overlay" aria-hidden>
+                  <div
+                    className="preview-selection"
+                    style={{
+                      left: `${(selection.x / selection.size) * 100}%`,
+                      top: `${(selection.y / selection.size) * 100}%`,
+                      width: `${(selection.width / selection.size) * 100}%`,
+                      height: `${(selection.height / selection.size) * 100}%`,
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
       <div className="preview-zoom-controls">
         <button 
           className="zoom-btn" 
-          onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+          onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - 0.25))}
           title="Zoom Out"
         >
           −
@@ -106,8 +190,11 @@ export default function PreviewCanvas({ atlas, canvasSize, selection }) {
         </button>
         <button 
           className="zoom-btn zoom-reset" 
-          onClick={() => setZoom(1)}
-          title="Reset Zoom"
+          onClick={() => {
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+          }}
+          title="Reset Zoom & Pan"
         >
           Reset
         </button>

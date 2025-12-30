@@ -26,6 +26,12 @@ function App() {
   const [leftTab, setLeftTab] = useState('images'); // images | settings | export
   const [prevTrim, setPrevTrim] = useState(false); // Track previous trim state
 
+  // Edit-mode replacement UX (populated when user clicks Replace on a sprite)
+  const [replaceTarget, setReplaceTarget] = useState(null); // { placement, atlasIndex, key }
+  const [replacePreserveAspect, setReplacePreserveAspect] = useState(true);
+  const [isReplaceDragging, setIsReplaceDragging] = useState(false);
+  const replaceFileInputRef = useRef(null);
+
   // Helper to add error
   const addError = (message) => {
     setErrors((prev) => {
@@ -118,6 +124,11 @@ function App() {
 
   const handleDeletePlacement = (placement, atlasIndex, placementIndex) => {
     setSelectedPlacement(null);
+    
+    // If we are deleting the image currently being replaced, clear the replace target
+    if (replaceTarget && replaceTarget.placement.x === placement.x && replaceTarget.placement.y === placement.y) {
+      setReplaceTarget(null);
+    }
 
     // If the placement is a newly added image (true for both create and edit modes), remove from images and repack
     if (placement.img) {
@@ -155,65 +166,92 @@ function App() {
     });
   };
 
-  const handleReplacePlacement = (placement) => {
+  const handleReplacePlacement = (placement, atlasIndex, key) => {
     if (mode !== 'edit' || !existingAtlas) return;
-    
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+    setReplaceTarget({ placement, atlasIndex, key });
+    setReplacePreserveAspect(true);
+    setIsReplaceDragging(false);
+    setLeftTab('images');
+  };
 
-      try {
-        const img = new Image();
-        const reader = new FileReader();
-        
-        reader.onload = (ev) => {
-          img.onload = () => {
-            // Create canvas to extract image data, scaling to fit the placement dimensions
-            const canvas = document.createElement('canvas');
-            canvas.width = placement.width;
-            canvas.height = placement.height;
-            const ctx = canvas.getContext('2d');
+  const cancelReplace = () => {
+    setReplaceTarget(null);
+    setIsReplaceDragging(false);
+  };
+
+  const applyReplacementFile = async (file) => {
+    if (!replaceTarget || !file) return;
+
+    const { placement } = replaceTarget;
+
+    try {
+      const img = new Image();
+      const reader = new FileReader();
+
+      reader.onload = (ev) => {
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = placement.width;
+          canvas.height = placement.height;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          if (replacePreserveAspect) {
+            const scaleDownOnly = Math.min(
+              1,
+              placement.width / img.naturalWidth,
+              placement.height / img.naturalHeight
+            );
+            const drawW = Math.round(img.naturalWidth * scaleDownOnly);
+            const drawH = Math.round(img.naturalHeight * scaleDownOnly);
+            const dx = Math.round((placement.width - drawW) / 2);
+            const dy = Math.round((placement.height - drawH) / 2);
+            ctx.drawImage(img, dx, dy, drawW, drawH);
+          } else {
             ctx.drawImage(img, 0, 0, placement.width, placement.height);
+          }
 
-            // Update the placement with new image data
-            setExistingAtlas((prev) => {
-              if (!prev) return prev;
-              const updatedPlacements = prev.placements.map((p) => {
-                if (
-                  p.name === placement.name &&
-                  p.x === placement.x &&
-                  p.y === placement.y &&
-                  p.width === placement.width &&
-                  p.height === placement.height
-                ) {
-                  return {
-                    ...p,
-                    imageData: ctx.getImageData(0, 0, canvas.width, canvas.height),
-                    canvas: canvas,
-                    name: file.name.replace(/\.[^/.]+$/, '')
-                  };
-                }
-                return p;
-              });
-              return { ...prev, placements: updatedPlacements };
+          const newName = file.name.replace(/\.[^/.]+$/, '');
+
+          setExistingAtlas((prev) => {
+            if (!prev) return prev;
+
+            const updatedPlacements = prev.placements.map((p) => {
+              if (p.x === placement.x && p.y === placement.y && p.width === placement.width && p.height === placement.height) {
+                return {
+                  ...p,
+                  name: newName,
+                  img: canvas,
+                };
+              }
+              return p;
             });
 
-            setInfo(`✓ Replaced image with ${file.name}`);
-            setTimeout(() => setInfo(''), 3000);
-            setError('');
-          };
-          img.src = ev.target.result;
+            const region = { x: placement.x, y: placement.y, width: placement.width, height: placement.height };
+            const removedRegions = prev.removedRegions || [];
+            const alreadyRemoved = removedRegions.some(
+              (r) => r.x === region.x && r.y === region.y && r.width === region.width && r.height === region.height
+            );
+
+            return {
+              ...prev,
+              placements: updatedPlacements,
+              removedRegions: alreadyRemoved ? removedRegions : [...removedRegions, region],
+            };
+          });
+
+          setInfo(`✓ Replaced image with ${file.name}`);
+          setTimeout(() => setInfo(''), 3000);
+          cancelReplace();
         };
-        
-        reader.readAsDataURL(file);
-      } catch (err) {
-        setError(`Failed to load replacement image: ${err.message}`);
-      }
-    };
-    input.click();
+        img.src = ev.target.result;
+      };
+
+      reader.readAsDataURL(file);
+    } catch (err) {
+      addError(`Failed to load replacement image: ${err.message}`);
+    }
   };
 
   const handlePack = () => {
@@ -427,22 +465,91 @@ function App() {
           )}
 
           {leftTab === 'images' && (
-            <section className="card">
-              <h2>Images</h2>
-              {mode === 'edit' && (
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <h4 style={{ marginBottom: '0.5rem' }}>Load Existing Atlas</h4>
-                  <AtlasUploader onAtlasLoad={handleAtlasLoad} />
-                  {existingAtlas && (
-                    <div className="existing-atlas-info" style={{ marginTop: '0.5rem', padding: '0.4rem', background: '#f0f0f0', borderRadius: '4px', color: '#000' }}>
-                      <strong>Loaded:</strong> {existingAtlas.placements.length} sprites, {existingAtlas.atlasSize}×{existingAtlas.atlasSize}
+            <>
+              <section className="card">
+                <h2>Images</h2>
+                {mode === 'edit' && (
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <h4 style={{ marginBottom: '0.5rem' }}>Load Existing Atlas</h4>
+                    <AtlasUploader onAtlasLoad={handleAtlasLoad} />
+                    {existingAtlas && (
+                      <div className="existing-atlas-info" style={{ marginTop: '0.5rem', padding: '0.4rem', background: '#f0f0f0', borderRadius: '4px', color: '#000' }}>
+                        <strong>Loaded:</strong> {existingAtlas.placements.length} sprites, {existingAtlas.atlasSize}×{existingAtlas.atlasSize}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <ImageUploader onAddImages={handleAddImages} enableTrim={settings.trim} />
+                <ImageList images={images} onRemoveImage={handleRemoveImage} />
+              </section>
+
+              {mode === 'edit' && replaceTarget && (
+                <section className="card" style={{ marginTop: '0.75rem' }}>
+                  <h2>Replace Image</h2>
+                  <div className="target-capsule">
+                    <span className="target-capsule-label">Target:</span>
+                    <span className="target-capsule-name">{replaceTarget.placement.name}</span>
+                    <span style={{ marginLeft: '0.5rem', opacity: 0.7, fontSize: '0.75rem' }}>
+                      ({replaceTarget.placement.width}×{replaceTarget.placement.height})
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Preserve Aspect</span>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={replacePreserveAspect}
+                        onChange={(e) => setReplacePreserveAspect(e.target.checked)}
+                      />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+
+                  <input
+                    ref={replaceFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => applyReplacementFile(e.target.files?.[0])}
+                    style={{ display: 'none' }}
+                  />
+
+                  <div
+                    className={`drop-zone ${isReplaceDragging ? 'dragging' : ''}`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsReplaceDragging(true);
+                    }}
+                    onDragLeave={() => setIsReplaceDragging(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsReplaceDragging(false);
+                      applyReplacementFile(e.dataTransfer.files?.[0]);
+                    }}
+                    onClick={() => replaceFileInputRef.current?.click()}
+                    style={{ padding: '1.25rem' }}
+                  >
+                    <div className="drop-zone-content">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5, marginBottom: '0.25rem' }}>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      <p className="drop-zone-text" style={{ fontSize: '0.8rem' }}>
+                        {isReplaceDragging ? 'Drop image' : 'Drag & drop or click'}
+                      </p>
                     </div>
-                  )}
-                </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+                    <button type="button" className="zoom-btn" style={{ fontSize: '0.8rem', padding: '0.3rem 0.8rem' }} onClick={cancelReplace}>
+                      Cancel
+                    </button>
+                  </div>
+                </section>
               )}
-              <ImageUploader onAddImages={handleAddImages} enableTrim={settings.trim} />
-              <ImageList images={images} onRemoveImage={handleRemoveImage} />
-            </section>
+            </>
           )}
 
           {leftTab === 'settings' && (
