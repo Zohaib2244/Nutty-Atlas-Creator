@@ -131,7 +131,10 @@ function App() {
     }
 
     // If the placement is a newly added image (true for both create and edit modes), remove from images and repack
-    if (placement.img) {
+    // Note: Replaced sprites in edit mode also have placement.img, but they are part of existingAtlas.placements
+    const isNewImage = placement.img && !existingAtlas?.placements.some(p => p.x === placement.x && p.y === placement.y);
+
+    if (isNewImage) {
       setImages((prev) => {
         const filtered = prev.filter((img) => !(img.name === placement.name && img.width === placement.width && img.height === placement.height));
         try {
@@ -147,7 +150,7 @@ function App() {
       return;
     }
 
-    // Non-new placements can only be removed in edit mode against an existing atlas
+    // Non-new placements (existing or replaced) can only be removed in edit mode against an existing atlas
     if (mode !== 'edit' || !existingAtlas) return;
     setExistingAtlas((prev) => {
       if (!prev) return prev;
