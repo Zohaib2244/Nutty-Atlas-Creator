@@ -8,6 +8,7 @@ import JSONPreview from './components/JSONPreview';
 import ExportPanel from './components/ExportPanel';
 import AtlasUploader from './components/AtlasUploader';
 import AtlasPlacementList from './components/AtlasPlacementList';
+import InfoPage from './components/InfoPage';
 import { packImages } from './utils/atlasPacker';
 import { renderAllAtlases } from './utils/atlasRenderer';
 import { applyTrimToImage, removeTrimFromImage } from './utils/imageLoader';
@@ -15,7 +16,7 @@ import { applyTrimToImage, removeTrimFromImage } from './utils/imageLoader';
 function App() {
   const [mode, setMode] = useState('create'); // 'create' or 'edit'
   const [images, setImages] = useState([]);
-  const [settings, setSettings] = useState({ size: 1024, padding: 2, trim: false });
+  const [settings, setSettings] = useState({ size: 2048, padding: 20, trim: false });
   const [atlases, setAtlases] = useState([]);
   const [activeAtlasIndex, setActiveAtlasIndex] = useState(0);
   const [errors, setErrors] = useState([]); // Array of error messages for persistence
@@ -25,6 +26,7 @@ function App() {
   const [selectedPlacement, setSelectedPlacement] = useState(null);
   const [leftTab, setLeftTab] = useState('images'); // images | settings | export
   const [prevTrim, setPrevTrim] = useState(false); // Track previous trim state
+  const [showInfo, setShowInfo] = useState(false);
 
   // Edit-mode replacement UX (populated when user clicks Replace on a sprite)
   const [replaceTarget, setReplaceTarget] = useState(null); // { placement, atlasIndex, key }
@@ -108,6 +110,7 @@ function App() {
     setInfo('');
     // Reset left tab to images when switching modes
     setLeftTab('images');
+    setShowInfo(false);
   };
 
   const handleSelectAtlasIndex = (idx) => {
@@ -408,31 +411,49 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Nutty Atlas Creator</h1>
-        <div className="mode-toggle-container">
+        <div className="header-actions">
+          <div className="mode-toggle-container">
+            <button
+              className={`mode-option ${mode === 'create' ? 'active' : ''}`}
+              onClick={() => mode !== 'create' && handleModeToggle()}
+              disabled={showInfo}
+              title={showInfo ? 'Close Info to change mode' : undefined}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              <span>Create New</span>
+            </button>
+            <button
+              className={`mode-option ${mode === 'edit' ? 'active' : ''}`}
+              onClick={() => mode !== 'edit' && handleModeToggle()}
+              disabled={showInfo}
+              title={showInfo ? 'Close Info to change mode' : undefined}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              <span>Edit Existing</span>
+            </button>
+            <div className={`mode-slider ${mode === 'edit' ? 'right' : ''}`}></div>
+          </div>
+
           <button
-            className={`mode-option ${mode === 'create' ? 'active' : ''}`}
-            onClick={() => mode !== 'create' && handleModeToggle()}
+            className={`btn ${showInfo ? 'btn-success' : 'btn-primary'}`}
+            onClick={() => setShowInfo((v) => !v)}
+            style={{ width: 'auto' }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14M5 12h14"/>
-            </svg>
-            <span>Create New</span>
+            {showInfo ? 'Back to App' : 'Info'}
           </button>
-          <button
-            className={`mode-option ${mode === 'edit' ? 'active' : ''}`}
-            onClick={() => mode !== 'edit' && handleModeToggle()}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-            <span>Edit Existing</span>
-          </button>
-          <div className={`mode-slider ${mode === 'edit' ? 'right' : ''}`}></div>
         </div>
       </header>
 
       <main className={`app-main ${activeAtlas ? 'has-atlas-panel' : ''}`}>
+        {showInfo ? (
+          <InfoPage />
+        ) : (
+        <>
         <aside className="sidebar">
           <div className="left-tabs">
             <button
@@ -661,6 +682,8 @@ function App() {
               <JSONPreview atlas={activeAtlas} atlasIndex={activeAtlasIndex} />
             </div>
           </aside>
+        )}
+        </>
         )}
       </main>
     </div>

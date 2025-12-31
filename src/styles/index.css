@@ -48,6 +48,47 @@ html, body {
   gap: 2rem;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-actions .btn {
+  width: auto;
+}
+
+.info-page {
+  grid-column: 1 / -1;
+  overflow: auto;
+  padding-right: 0.75rem;
+}
+
+.info-card {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.info-list {
+  margin-left: 1.25rem;
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+}
+
+.info-list li {
+  margin-bottom: 0.5rem;
+}
+
+.info-bullets {
+  margin-left: 1.25rem;
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+}
+
+.info-bullets li {
+  margin-bottom: 0.5rem;
+}
+
 .app-header h1 {
   font-size: 1.75rem;
   font-weight: 600;
@@ -293,6 +334,12 @@ html, body {
   background: rgba(76, 175, 80, 0.08);
 }
 
+.atlas-drop-zone.mismatch {
+  border-style: solid;
+  border-color: rgba(244, 67, 54, 0.85);
+  background: rgba(244, 67, 54, 0.10);
+}
+
 .atlas-drop-content {
   display: flex;
   flex-direction: column;
@@ -325,6 +372,30 @@ html, body {
   text-align: center;
   position: relative;
   width: 100%;
+}
+
+.atlas-name-field {
+  margin-top: 0.6rem;
+}
+
+.atlas-name-field label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+}
+
+.atlas-name-field input {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.atlas-name-field input.mismatch {
+  border-color: rgba(244, 67, 54, 0.85);
 }
 
 .atlas-file-info svg {

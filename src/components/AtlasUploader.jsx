@@ -9,6 +9,11 @@ export default function AtlasUploader({ onAtlasLoad }) {
   const pngInputRef = useRef(null);
   const jsonInputRef = useRef(null);
 
+  const stripExt = (name) => String(name || '').replace(/\.[^/.]+$/, '');
+  const pngBaseName = pngFile ? stripExt(pngFile.name) : '';
+  const jsonBaseName = jsonFile ? stripExt(jsonFile.name) : '';
+  const nameMismatch = Boolean(pngFile && jsonFile && pngBaseName && jsonBaseName && pngBaseName !== jsonBaseName);
+
   const handlePngDrop = (e) => {
     e.preventDefault();
     setIsDraggingPng(false);
@@ -59,6 +64,11 @@ export default function AtlasUploader({ onAtlasLoad }) {
       return;
     }
 
+    if (nameMismatch) {
+      setError('Filename mismatch: PNG and JSON must have the same base name');
+      return;
+    }
+
     try {
       // Load PNG image
       const pngUrl = URL.createObjectURL(pngFile);
@@ -106,6 +116,9 @@ export default function AtlasUploader({ onAtlasLoad }) {
         atlasSize,
         padding: jsonData.meta?.padding || 0,
         originalJson: jsonData,
+        sourcePngName: pngFile.name,
+        sourceJsonName: jsonFile.name,
+        sourceBaseName: pngBaseName,
       });
 
       setError('');
@@ -132,7 +145,7 @@ export default function AtlasUploader({ onAtlasLoad }) {
       <div className="atlas-drop-zones">
         {/* PNG Drop Zone */}
         <div
-          className={`atlas-drop-zone ${isDraggingPng ? 'dragging' : ''} ${pngFile ? 'has-file' : ''}`}
+          className={`atlas-drop-zone ${isDraggingPng ? 'dragging' : ''} ${pngFile ? 'has-file' : ''} ${nameMismatch ? 'mismatch' : ''}`}
           onDrop={handlePngDrop}
           onDragOver={(e) => { e.preventDefault(); setIsDraggingPng(true); }}
           onDragLeave={() => setIsDraggingPng(false)}
@@ -152,7 +165,6 @@ export default function AtlasUploader({ onAtlasLoad }) {
                 <circle cx="8.5" cy="8.5" r="1.5"/>
                 <polyline points="21 15 16 10 5 21"/>
               </svg>
-              <span className="file-name" title={pngFile.name}>{pngFile.name}</span>
               <button className="clear-file-btn" onClick={clearPng} title="Remove">✕</button>
             </div>
           ) : (
@@ -170,7 +182,7 @@ export default function AtlasUploader({ onAtlasLoad }) {
 
         {/* JSON Drop Zone */}
         <div
-          className={`atlas-drop-zone ${isDraggingJson ? 'dragging' : ''} ${jsonFile ? 'has-file' : ''}`}
+          className={`atlas-drop-zone ${isDraggingJson ? 'dragging' : ''} ${jsonFile ? 'has-file' : ''} ${nameMismatch ? 'mismatch' : ''}`}
           onDrop={handleJsonDrop}
           onDragOver={(e) => { e.preventDefault(); setIsDraggingJson(true); }}
           onDragLeave={() => setIsDraggingJson(false)}
@@ -191,7 +203,6 @@ export default function AtlasUploader({ onAtlasLoad }) {
                 <line x1="16" y1="13" x2="8" y2="13"/>
                 <line x1="16" y1="17" x2="8" y2="17"/>
               </svg>
-              <span className="file-name" title={jsonFile.name}>{jsonFile.name}</span>
               <button className="clear-file-btn" onClick={clearJson} title="Remove">✕</button>
             </div>
           ) : (
@@ -209,12 +220,28 @@ export default function AtlasUploader({ onAtlasLoad }) {
         </div>
       </div>
 
+      <div className="atlas-name-field">
+        <label>Uploaded Atlas Name</label>
+        <input
+          type="text"
+          value={pngBaseName || jsonBaseName}
+          readOnly
+          className={nameMismatch ? 'mismatch' : ''}
+          placeholder="Select both PNG and JSON"
+        />
+        {nameMismatch && (
+          <div className="error-message" style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
+            Filename mismatch: PNG and JSON must have the same base name
+          </div>
+        )}
+      </div>
+
       {error && <div className="error-message" style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>{error}</div>}
       
       <button
         className="btn btn-primary"
         onClick={handleLoad}
-        disabled={!pngFile || !jsonFile}
+        disabled={!pngFile || !jsonFile || nameMismatch}
         style={{ marginTop: '0.75rem' }}
       >
         Load Atlas

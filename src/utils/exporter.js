@@ -89,6 +89,93 @@ function canvasToBlob(canvas) {
 }
 
 /**
+ * Export a single atlas canvas + JSON (used by edit-mode "Replace Files")
+ * @param {Object} atlas
+ * @param {Object} existingAtlas
+ * @returns {Promise<{pngBlob: Blob, json: Object}>}
+ */
+export async function exportAtlasAsPngJson(atlas, existingAtlas = null) {
+  const existingJson = (atlas?.isEditing && existingAtlas) ? existingAtlas.originalJson : null;
+  const json = buildAtlasJSON(atlas, atlas?.index ?? 0, existingJson);
+  const pngBlob = await canvasToBlob(atlas.canvas);
+  return { pngBlob, json };
+}
+
+async function ensureHandlePermission(handle, mode = 'readwrite') {
+  // File System Access API (Chromium). If not available, just return false.
+  if (!handle || typeof handle.queryPermission !== 'function') return false;
+
+  const opts = { mode };
+  const current = await handle.queryPermission(opts);
+  if (current === 'granted') return true;
+  const requested = await handle.requestPermission(opts);
+  return requested === 'granted';
+}
+
+/**
+ * Overwrite (or create) a file in a user-picked directory.
+ * Requires the File System Access API (Chromium-based browsers).
+ * @param {FileSystemDirectoryHandle} directoryHandle
+ * @param {string} filename
+ * @param {Blob} blob
+ */
+export async function writeFileToDirectory(directoryHandle, filename, blob) {
+  if (!directoryHandle || typeof directoryHandle.getFileHandle !== 'function') {
+    throw new Error('File System Access API not available');
+  }
+
+  const ok = await ensureHandlePermission(directoryHandle, 'readwrite');
+  if (!ok) throw new Error('Permission not granted to write to the selected folder');
+
+  const fileHandle = await directoryHandle.getFileHandle(filename, { create: true });
+  if (fileHandle && typeof fileHandle.createWritable === 'function') {
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return;
+  }
+
+  throw new Error('Unable to create writable file handle');
+}
+
+/**
+ * Export atlases as ZIP for edit mode, preserving uploaded base filename.
+ * If multiple atlas pages exist, suffixes _2, _3... are appended.
+ * @param {Array} atlases
+ * @param {Object} existingAtlas
+ * @param {string} baseName
+ * @returns {Promise<Blob>}
+ */
+export async function exportAtlasesAsZipEdit(atlases, existingAtlas = null, baseName = 'atlas') {
+  const zip = new JSZip();
+  const meta = { atlases: [] };
+
+  const safeBase = (baseName || 'atlas').replace(/[^\w-]/g, '_');
+
+  for (let i = 0; i < atlases.length; i++) {
+    const atlas = atlases[i];
+    const pageName = atlases.length === 1 ? safeBase : `${safeBase}_${i + 1}`;
+
+    const existingJson = (atlas.isEditing && existingAtlas) ? existingAtlas.originalJson : null;
+    const json = buildAtlasJSON(atlas, i, existingJson);
+
+    meta.atlases.push({
+      name: pageName,
+      size: atlas.size,
+      padding: atlas.padding,
+      spriteCount: Object.keys(json.frames || json.sprites || {}).length,
+    });
+
+    const pngBlob = await canvasToBlob(atlas.canvas);
+    zip.file(`${pageName}.json`, JSON.stringify(json, null, 2));
+    zip.file(`${pageName}.png`, pngBlob);
+  }
+
+  zip.file('pack_manifest.json', JSON.stringify(meta, null, 2));
+  return zip.generateAsync({ type: 'blob' });
+}
+
+/**
  * Export all atlases as a ZIP file
  * @param {Array} atlases
  * @param {Object} existingAtlas - Optional existing atlas data (for edit mode)
