@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:duplicates": "node scripts/test_overlap_duplicates.js",
+    "test:packer": "node scripts/run_packer_test.js",
+    "test": "npm run test:duplicates && npm run test:packer"
   },
   "dependencies": {
     "react": "^18.3.1",

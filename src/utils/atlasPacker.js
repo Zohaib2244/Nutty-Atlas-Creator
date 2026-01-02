@@ -345,6 +345,22 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
         for (let j = i + 1; j < a.placements.length; j++) {
           const p1 = a.placements[i];
           const p2 = a.placements[j];
+
+          // If these placements are *exact* duplicates (same region but different names),
+          // treat them as aliases rather than an overlapping error — skip the check.
+          if (
+            p1.x === p2.x &&
+            p1.y === p2.y &&
+            p1.width === p2.width &&
+            p1.height === p2.height
+          ) {
+            // For diagnostics, attach a note to the atlas (non-fatal)
+            a.note = a.note || '';
+            a.note += `Duplicate frames detected: "${p1.name}" and "${p2.name}" at (${p1.x},${p1.y}) ` +
+                      `size ${p1.width}×${p1.height}.\n`;
+            continue;
+          }
+
           const r1 = { x: p1.x, y: p1.y, width: p1.width + padding, height: p1.height + padding };
           const r2 = { x: p2.x, y: p2.y, width: p2.width + padding, height: p2.height + padding };
           if (rectsIntersect(r1, r2)) return true;
