@@ -1,9 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { exportAtlasAsPngJson, exportAtlasesAsZip, exportAtlasesAsZipEdit, triggerDownload, writeFileToDirectory } from '../utils/exporter';
+import {
+  EXPORT_FORMATS,
+  exportAtlasAsPngJson,
+  exportAtlasesAsZip,
+  exportAtlasesAsZipEdit,
+  triggerDownload,
+  writeFileToDirectory,
+} from '../utils/exporter';
 
 export default function ExportPanel({ atlases, disabled, existingAtlas }) {
   const [status, setStatus] = useState('');
   const [customName, setCustomName] = useState('atlas');
+  const [format, setFormat] = useState('default');
 
   useEffect(() => {
     if (!existingAtlas) return;
@@ -35,10 +43,9 @@ export default function ExportPanel({ atlases, disabled, existingAtlas }) {
     setStatus('Preparing files...');
 
     try {
-      const { pngBlob, json } = await exportAtlasAsPngJson(atlases[0], existingAtlas);
+      const { pngBlob, json } = await exportAtlasAsPngJson(atlases[0], existingAtlas, format, pngName);
       const jsonBlob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
 
-      // True in-place replacement is only possible with the File System Access API
       if (typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function') {
         setStatus('Pick the folder containing your original files...');
         const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
@@ -47,7 +54,6 @@ export default function ExportPanel({ atlases, disabled, existingAtlas }) {
         await writeFileToDirectory(dirHandle, jsonName, jsonBlob);
         setStatus('Replaced files in selected folder.');
       } else {
-        // Fallback (cannot write to disk without user-granted directory handle)
         triggerDownload(pngBlob, pngName);
         triggerDownload(jsonBlob, jsonName);
         setStatus('Browser cannot replace files directly; downloaded instead.');
@@ -74,8 +80,8 @@ export default function ExportPanel({ atlases, disabled, existingAtlas }) {
     try {
       const sanitized = (customName || 'atlas').replace(/[^\w-]/g, '_');
       const zipBlob = isEdit
-        ? await exportAtlasesAsZipEdit(atlases, existingAtlas, sanitized)
-        : await exportAtlasesAsZip(atlases, existingAtlas, sanitized);
+        ? await exportAtlasesAsZipEdit(atlases, existingAtlas, sanitized, format)
+        : await exportAtlasesAsZip(atlases, existingAtlas, sanitized, format);
       const zipName = isEdit ? `${sanitized}.zip` : `AVN_${sanitized}_${atlases.length}.zip`;
       triggerDownload(zipBlob, zipName);
       setStatus('Download started!');
@@ -93,15 +99,30 @@ export default function ExportPanel({ atlases, disabled, existingAtlas }) {
           ? 'Edit mode: replace the original PNG/JSON files, or export a ZIP using the uploaded atlas name.'
           : 'Download all atlases and their JSON metadata as a single ZIP file.'}
       </p>
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.6rem' }}>
-        <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>File Name:</label>
+
+      <div className="export-field-row">
+        <label className="export-field-label">File Name</label>
         <input
           type="text"
           value={customName}
           onChange={(e) => setCustomName(e.target.value)}
-          style={{ padding: '0.4rem 0.6rem', borderRadius: '0.4rem', background: 'var(--bg-input)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+          className="export-field-input"
         />
       </div>
+
+      <div className="export-field-row">
+        <label className="export-field-label">Format</label>
+        <select
+          value={format}
+          onChange={(e) => setFormat(e.target.value)}
+          className="export-field-input"
+        >
+          {EXPORT_FORMATS.map((f) => (
+            <option key={f.id} value={f.id}>{f.label}</option>
+          ))}
+        </select>
+      </div>
+
       {isEdit ? (
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button

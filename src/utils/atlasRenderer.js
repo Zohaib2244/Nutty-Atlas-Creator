@@ -5,15 +5,17 @@
  */
 export function renderAtlasToCanvas(atlas) {
   const canvas = document.createElement('canvas');
-  canvas.width = atlas.size;
-  canvas.height = atlas.size;
+  const w = atlas.width || atlas.size;
+  const h = atlas.height || atlas.size;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, w, h);
 
   // If editing an existing atlas, draw the base image first
   if (atlas.isEditing && atlas.baseImage) {
-    ctx.drawImage(atlas.baseImage, 0, 0, atlas.size, atlas.size);
+    ctx.drawImage(atlas.baseImage, 0, 0, w, h);
   }
 
   // Clear any regions that were removed while editing

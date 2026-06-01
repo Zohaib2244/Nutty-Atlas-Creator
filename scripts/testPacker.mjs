@@ -6,7 +6,7 @@ function makeMock(name, w, h) {
 
 function test(atlasSize, padding) {
   const images = [makeMock('img1', 50, 50), makeMock('img2', 50, 50), makeMock('img3', 120, 120)];
-  const atlases = packImages(images, atlasSize, padding, 4096);
+  const atlases = packImages(images, atlasSize, atlasSize, padding, 4096);
   console.log('Atlas count:', atlases.length);
   atlases.forEach((a, idx) => {
     console.log(`Atlas ${idx} size=${a.size} placements=${a.placements.length}`);
@@ -37,7 +37,7 @@ console.log('\nCustom gap-fill test (128 atlas)');
 try {
   // padding 0 so 128-high sprite fits exactly in a 128 atlas
   const images = [makeMock('A', 64, 128), makeMock('B', 64, 64), makeMock('C', 64, 64)];
-  const atlases = packImages(images, 128, 0, 4096);
+  const atlases = packImages(images, 128, 128, 0, 4096);
   console.log('Atlas count:', atlases.length);
   atlases.forEach((a, idx) => {
     console.log(`Atlas ${idx} size=${a.size} placements=${a.placements.length}`);
@@ -61,7 +61,7 @@ try {
     makeMock('X4', 60, 60),
     makeMock('X5', 60, 60),
   ];
-  const atlases = packImages(images, 512, 2, 4096);
+  const atlases = packImages(images, 512, 512, 2, 4096);
   console.log('Atlas count:', atlases.length);
   atlases.forEach((a, idx) => {
     console.log(`Atlas ${idx} size=${a.size} placements=${a.placements.length}`);
@@ -100,7 +100,7 @@ try {
       spriteSourceSize: { x: 0, y: 0, w: img.width, h: img.height },
     },
   }));
-  const atlases = packImages(images, 1024, 2, 4096);
+  const atlases = packImages(images, 1024, 1024, 2, 4096);
   console.log('Atlas count:', atlases.length);
   atlases.forEach((a, idx) => {
     console.log(`Atlas ${idx} size=${a.size} placements=${a.placements.length}`);
@@ -129,7 +129,7 @@ try {
     const h = Math.floor(Math.random() * 128) + 8;
     randomImages.push(makeMock(`r${i}`, w, h));
   }
-  const atlases = packImages(randomImages, 1024, 2, 4096);
+  const atlases = packImages(randomImages, 1024, 1024, 2, 4096);
   console.log('Atlas count:', atlases.length);
   // Validate overlaps
   for (const a of atlases) {

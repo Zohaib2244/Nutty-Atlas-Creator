@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ImageUploader from './components/ImageUploader';
 import ImageList from './components/ImageList';
 import AtlasSettings from './components/AtlasSettings';
@@ -16,7 +16,7 @@ import { applyTrimToImage, removeTrimFromImage } from './utils/imageLoader';
 function App() {
   const [mode, setMode] = useState('create'); // 'create' or 'edit'
   const [images, setImages] = useState([]);
-  const [settings, setSettings] = useState({ size: 2048, padding: 20, trim: false });
+  const [settings, setSettings] = useState({ size: 2048, atlasWidth: 2048, atlasHeight: 2048, squareMode: true, padding: 20, trim: false, dynamicSizing: false });
   const [atlases, setAtlases] = useState([]);
   const [activeAtlasIndex, setActiveAtlasIndex] = useState(0);
   const [errors, setErrors] = useState([]); // Array of error messages for persistence
@@ -27,6 +27,11 @@ function App() {
   const [leftTab, setLeftTab] = useState('images'); // images | settings | export
   const [prevTrim, setPrevTrim] = useState(false); // Track previous trim state
   const [showInfo, setShowInfo] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(null);
+
+  // Undo/redo history — each entry is a shallow snapshot of { images, existingAtlas }
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
 
   // Edit-mode replacement UX (populated when user clicks Replace on a sprite)
   const [replaceTarget, setReplaceTarget] = useState(null); // { placement, atlasIndex, key }
@@ -51,50 +56,117 @@ function App() {
     setErrors((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Undo/redo helpers
+  const pushSnapshot = useCallback(() => {
+    setUndoStack((prev) => [...prev.slice(-29), { images, existingAtlas }]);
+    setRedoStack([]);
+  }, [images, existingAtlas]);
+
+  const handleUndo = useCallback(() => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const snapshot = prev[prev.length - 1];
+      setRedoStack((r) => [{ images, existingAtlas }, ...r.slice(0, 29)]);
+      setImages(snapshot.images);
+      setExistingAtlas(snapshot.existingAtlas);
+      return prev.slice(0, -1);
+    });
+  }, [images, existingAtlas]);
+
+  const handleRedo = useCallback(() => {
+    setRedoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const snapshot = prev[0];
+      setUndoStack((u) => [...u.slice(-29), { images, existingAtlas }]);
+      setImages(snapshot.images);
+      setExistingAtlas(snapshot.existingAtlas);
+      return prev.slice(1);
+    });
+  }, [images, existingAtlas]);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); }
+      else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') { e.preventDefault(); handleRedo(); }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleUndo, handleRedo]);
+
   const handleAddImages = (loadedImages) => {
-    // Append new images; avoid duplicates by name
+    pushSnapshot();
     clearErrors();
     setInfo('');
-    setImages((prev) => {
-      const existingNames = new Set(prev.map((it) => it.name));
-      const filtered = loadedImages.filter((it) => !existingNames.has(it.name));
 
-      // Pre-check for oversized images and reject them up-front (no auto-resize)
-      const rejected = filtered.filter(
-        (it) => it.width + settings.padding > settings.size || it.height + settings.padding > settings.size
-      );
-      if (rejected.length) {
-        rejected.forEach((r) => {
-          addError(`Image "${r.name}" (${r.width}x${r.height}) is larger than atlas ${settings.size}×${settings.size}`);
-        });
-      }
-      // Only keep images that fit
-      const accepted = filtered.filter(
-        (it) => it.width + settings.padding <= settings.size && it.height + settings.padding <= settings.size
-      );
-      if (accepted.length) {
-        setLastAddedNames(accepted.map((it) => it.name));
-        
-        // Show trim info if enabled
-        if (settings.trim) {
-          const trimmedCount = accepted.filter(img => img.trimData?.trimmed).length;
-          if (trimmedCount > 0) {
-            setInfo(`✂️ Trimmed ${trimmedCount} image${trimmedCount > 1 ? 's' : ''} - removed transparent padding`);
-            setTimeout(() => setInfo(''), 4000);
-          }
+    const MAX_ATLAS_SIZE = 4096;
+    const { padding, size, dynamicSizing: dynSizing, trim } = settings;
+
+    // Duplicate detection against current images (safe: triggered by user interaction only)
+    const existingNames = new Set(images.map((it) => it.name));
+    const skipped = loadedImages.filter((it) => existingNames.has(it.name));
+    const fresh = loadedImages.filter((it) => !existingNames.has(it.name));
+
+    if (skipped.length > 0) {
+      skipped.forEach((s) => addError(`"${s.name}" already exists — skipped`));
+    }
+
+    // Size check
+    const sizeLimit = dynSizing ? MAX_ATLAS_SIZE : size;
+    const oversized = fresh.filter(
+      (it) => it.width + padding > sizeLimit || it.height + padding > sizeLimit
+    );
+    const accepted = fresh.filter(
+      (it) => it.width + padding <= sizeLimit && it.height + padding <= sizeLimit
+    );
+
+    oversized.forEach((r) => {
+      addError(`"${r.name}" (${r.width}×${r.height}) is larger than atlas ${sizeLimit}×${sizeLimit}`);
+    });
+
+    if (accepted.length > 0) {
+      setLastAddedNames(accepted.map((it) => it.name));
+
+      if (trim) {
+        const trimmedCount = accepted.filter((img) => img.trimData?.trimmed).length;
+        if (trimmedCount > 0) {
+          setInfo(`✂️ Trimmed ${trimmedCount} image${trimmedCount > 1 ? 's' : ''} — removed transparent padding`);
+          setTimeout(() => setInfo(''), 4000);
         }
       }
-      return [...prev, ...accepted];
-    });
+      if (dynSizing) {
+        setInfo('Dynamic sizing enabled — atlas will grow up to 4096×4096 as needed');
+        setTimeout(() => setInfo(''), 3000);
+      }
+
+      setImages((prev) => [...prev, ...accepted]);
+    }
   };
 
   const handleRemoveImage = (index) => {
+    pushSnapshot();
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Keep selectedImageIndex valid when images array changes
+  useEffect(() => {
+    if (selectedImageIndex != null && selectedImageIndex >= images.length) {
+      setSelectedImageIndex(null);
+    }
+  }, [images, selectedImageIndex]);
+
   const handleAtlasLoad = (atlasData) => {
+    pushSnapshot();
     setExistingAtlas({ ...atlasData, removedRegions: [] });
-    setSettings((prev) => ({ ...prev, size: atlasData.atlasSize, padding: atlasData.padding }));
+    setSettings((prev) => ({
+      ...prev,
+      size: atlasData.atlasSize,
+      atlasWidth: atlasData.atlasWidth || atlasData.atlasSize,
+      atlasHeight: atlasData.atlasHeight || atlasData.atlasSize,
+      squareMode: (atlasData.atlasWidth || atlasData.atlasSize) === (atlasData.atlasHeight || atlasData.atlasSize),
+      padding: atlasData.padding,
+    }));
     setInfo(`Loaded existing atlas with ${atlasData.placements.length} sprites. Add new images to extend it.`);
     clearErrors();
   };
@@ -122,12 +194,25 @@ function App() {
     const targetAtlas = atlases[atlasIndex];
     if (!targetAtlas) return;
     setActiveAtlasIndex(atlasIndex);
-    setSelectedPlacement({ ...placement, size: targetAtlas.size, key });
+    setSelectedPlacement({ ...placement, size: targetAtlas.size, atlasWidth: targetAtlas.width || targetAtlas.size, atlasHeight: targetAtlas.height || targetAtlas.size, key });
+  };
+
+  const handleCanvasImageClick = (placement) => {
+    // Always highlight in the placement list (right panel)
+    const atlas = atlases[activeAtlasIndex];
+    if (!atlas) return;
+    const placementIdx = atlas.placements.findIndex(
+      (p) => p.x === placement.x && p.y === placement.y && p.name === placement.name
+    );
+    if (placementIdx === -1) return;
+    const key = `${placement.name}-${placement.x}-${placement.y}-${placement.width}-${placement.height}-${placementIdx}`;
+    handleSelectPlacement(placement, activeAtlasIndex, key);
   };
 
   const handleDeletePlacement = (placement, atlasIndex, placementIndex) => {
+    pushSnapshot();
     setSelectedPlacement(null);
-    
+
     // If we are deleting the image currently being replaced, clear the replace target
     if (replaceTarget && replaceTarget.placement.x === placement.x && replaceTarget.placement.y === placement.y) {
       setReplaceTarget(null);
@@ -141,7 +226,7 @@ function App() {
       setImages((prev) => {
         const filtered = prev.filter((img) => !(img.name === placement.name && img.width === placement.width && img.height === placement.height));
         try {
-          const packed = packImages(filtered, settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
+          const packed = packImages(filtered, settings.atlasWidth || settings.size, settings.atlasHeight || settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null, settings.dynamicSizing);
           renderAllAtlases(packed);
           setAtlases(packed);
           setActiveAtlasIndex(0);
@@ -161,7 +246,7 @@ function App() {
       const removedRegions = [...(prev.removedRegions || []), { x: placement.x, y: placement.y, width: placement.width, height: placement.height }];
       const updated = { ...prev, placements: updatedPlacements, removedRegions };
       try {
-        const packed = packImages(images, settings.size, settings.padding, 4096, 0, updated);
+        const packed = packImages(images, settings.atlasWidth || settings.size, settings.atlasHeight || settings.size, settings.padding, 4096, 0, updated, settings.dynamicSizing);
         renderAllAtlases(packed);
         setAtlases(packed);
         setActiveAtlasIndex(0);
@@ -170,6 +255,35 @@ function App() {
       }
       return updated;
     });
+  };
+
+  const handleRenamePlacement = (placement, atlasIndex, newName) => {
+    newName = newName.trim();
+    if (!newName || newName === placement.name) return;
+
+    // Reject if name is already used by another sprite in any atlas
+    const taken = atlases.flatMap((a) => a.placements).some((p) => p.name === newName);
+    if (taken) {
+      addError(`Sprite name "${newName}" is already in use`);
+      return;
+    }
+
+    pushSnapshot();
+
+    // Update source: new sprites live in `images`; existing/replaced sprites live in existingAtlas
+    const inImages = images.findIndex((img) => img.name === placement.name) !== -1;
+    if (inImages) {
+      setImages((prev) => prev.map((img) => img.name === placement.name ? { ...img, name: newName } : img));
+    } else if (existingAtlas) {
+      setExistingAtlas((prev) => ({
+        ...prev,
+        placements: prev.placements.map((p) =>
+          p.x === placement.x && p.y === placement.y && p.name === placement.name
+            ? { ...p, name: newName }
+            : p,
+        ),
+      }));
+    }
   };
 
   const handleReplacePlacement = (placement, atlasIndex, key) => {
@@ -187,74 +301,76 @@ function App() {
 
   const applyReplacementFile = async (file) => {
     if (!replaceTarget || !file) return;
+    pushSnapshot();
 
     const { placement } = replaceTarget;
 
     try {
-      const img = new Image();
-      const reader = new FileReader();
+      // Load the file as a data URL via a real promise chain
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(ev.target.result);
+        reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+        reader.readAsDataURL(file);
+      });
 
-      reader.onload = (ev) => {
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = placement.width;
-          canvas.height = placement.height;
-          const ctx = canvas.getContext('2d');
-          ctx.imageSmoothingEnabled = true;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error(`Failed to decode image: ${file.name}`));
+        el.src = dataUrl;
+      });
 
-          if (replacePreserveAspect) {
-            const scaleDownOnly = Math.min(
-              1,
-              placement.width / img.naturalWidth,
-              placement.height / img.naturalHeight
-            );
-            const drawW = Math.round(img.naturalWidth * scaleDownOnly);
-            const drawH = Math.round(img.naturalHeight * scaleDownOnly);
-            const dx = Math.round((placement.width - drawW) / 2);
-            const dy = Math.round((placement.height - drawH) / 2);
-            ctx.drawImage(img, dx, dy, drawW, drawH);
-          } else {
-            ctx.drawImage(img, 0, 0, placement.width, placement.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = placement.width;
+      canvas.height = placement.height;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (replacePreserveAspect) {
+        const scaleDownOnly = Math.min(
+          1,
+          placement.width / img.naturalWidth,
+          placement.height / img.naturalHeight
+        );
+        const drawW = Math.round(img.naturalWidth * scaleDownOnly);
+        const drawH = Math.round(img.naturalHeight * scaleDownOnly);
+        const dx = Math.round((placement.width - drawW) / 2);
+        const dy = Math.round((placement.height - drawH) / 2);
+        ctx.drawImage(img, dx, dy, drawW, drawH);
+      } else {
+        ctx.drawImage(img, 0, 0, placement.width, placement.height);
+      }
+
+      const newName = file.name.replace(/\.[^/.]+$/, '');
+
+      setExistingAtlas((prev) => {
+        if (!prev) return prev;
+
+        const updatedPlacements = prev.placements.map((p) => {
+          if (p.x === placement.x && p.y === placement.y && p.width === placement.width && p.height === placement.height) {
+            return { ...p, name: newName, img: canvas };
           }
+          return p;
+        });
 
-          const newName = file.name.replace(/\.[^/.]+$/, '');
+        const region = { x: placement.x, y: placement.y, width: placement.width, height: placement.height };
+        const removedRegions = prev.removedRegions || [];
+        const alreadyRemoved = removedRegions.some(
+          (r) => r.x === region.x && r.y === region.y && r.width === region.width && r.height === region.height
+        );
 
-          setExistingAtlas((prev) => {
-            if (!prev) return prev;
-
-            const updatedPlacements = prev.placements.map((p) => {
-              if (p.x === placement.x && p.y === placement.y && p.width === placement.width && p.height === placement.height) {
-                return {
-                  ...p,
-                  name: newName,
-                  img: canvas,
-                };
-              }
-              return p;
-            });
-
-            const region = { x: placement.x, y: placement.y, width: placement.width, height: placement.height };
-            const removedRegions = prev.removedRegions || [];
-            const alreadyRemoved = removedRegions.some(
-              (r) => r.x === region.x && r.y === region.y && r.width === region.width && r.height === region.height
-            );
-
-            return {
-              ...prev,
-              placements: updatedPlacements,
-              removedRegions: alreadyRemoved ? removedRegions : [...removedRegions, region],
-            };
-          });
-
-          setInfo(`✓ Replaced image with ${file.name}`);
-          setTimeout(() => setInfo(''), 3000);
-          cancelReplace();
+        return {
+          ...prev,
+          placements: updatedPlacements,
+          removedRegions: alreadyRemoved ? removedRegions : [...removedRegions, region],
         };
-        img.src = ev.target.result;
-      };
+      });
 
-      reader.readAsDataURL(file);
+      setInfo(`✓ Replaced image with ${file.name}`);
+      setTimeout(() => setInfo(''), 3000);
+      cancelReplace();
     } catch (err) {
       addError(`Failed to load replacement image: ${err.message}`);
     }
@@ -274,7 +390,7 @@ function App() {
     setSelectedPlacement(null);
 
     try {
-      const packed = packImages(images, settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
+      const packed = packImages(images, settings.atlasWidth || settings.size, settings.atlasHeight || settings.size, settings.padding, 4096, 0, mode === 'edit' ? existingAtlas : null, settings.dynamicSizing);
       renderAllAtlases(packed);
       setAtlases(packed);
       setActiveAtlasIndex(0);
@@ -291,55 +407,58 @@ function App() {
       setPrevTrim(settings.trim);
       return;
     }
-    
-    if (settings.trim !== prevTrim) {
-      const applyTrimChanges = async () => {
-        try {
-          let updatedImages;
-          if (settings.trim) {
-            // Apply trim to all images
-            updatedImages = await Promise.all(images.map(applyTrimToImage));
-            const trimmedCount = updatedImages.filter(img => img.trimData?.trimmed).length;
-            if (trimmedCount > 0) {
-              setInfo(`✂️ Trimmed ${trimmedCount} image${trimmedCount > 1 ? 's' : ''}`);
-              setTimeout(() => setInfo(''), 3000);
-            }
-          } else {
-            // Remove trim from all images
-            updatedImages = images.map(removeTrimFromImage);
-            setInfo('Trim removed - images restored to original size');
+
+    if (settings.trim === prevTrim) return;
+
+    const currentImages = images;
+    const { trim, padding, size, dynamicSizing: dynSizing } = settings;
+    const MAX_ATLAS_SIZE = 4096;
+
+    const applyTrimChanges = async () => {
+      try {
+        let updatedImages;
+        if (trim) {
+          updatedImages = await Promise.all(currentImages.map(applyTrimToImage));
+          const trimmedCount = updatedImages.filter((img) => img.trimData?.trimmed).length;
+          if (trimmedCount > 0) {
+            setInfo(`✂️ Trimmed ${trimmedCount} image${trimmedCount > 1 ? 's' : ''}`);
             setTimeout(() => setInfo(''), 3000);
           }
-          
-          // Check for oversized images after trim change
-          const rejected = updatedImages.filter(
-            (it) => it.width + settings.padding > settings.size || it.height + settings.padding > settings.size
-          );
-          if (rejected.length) {
-            rejected.forEach((r) => {
-              addError(`Image "${r.name}" (${r.width}x${r.height}) is now larger than atlas ${settings.size}×${settings.size}`);
-            });
-            // Filter out oversized images
-            updatedImages = updatedImages.filter(
-              (it) => it.width + settings.padding <= settings.size && it.height + settings.padding <= settings.size
-            );
-          }
-          
-          setImages(updatedImages);
-        } catch (err) {
-          console.error('Error applying trim changes:', err);
-          addError('Failed to apply trim changes');
+        } else {
+          updatedImages = currentImages.map(removeTrimFromImage);
+          setInfo('Trim removed — images restored to original size');
+          setTimeout(() => setInfo(''), 3000);
         }
-      };
-      
-      applyTrimChanges();
-      setPrevTrim(settings.trim);
-    }
+
+        // Respect dynamicSizing when checking for oversized images
+        const sizeLimit = dynSizing ? MAX_ATLAS_SIZE : size;
+        const rejected = updatedImages.filter(
+          (it) => it.width + padding > sizeLimit || it.height + padding > sizeLimit
+        );
+        if (rejected.length) {
+          rejected.forEach((r) => {
+            addError(`Image "${r.name}" (${r.width}x${r.height}) is now larger than atlas ${sizeLimit}×${sizeLimit}`);
+          });
+          updatedImages = updatedImages.filter(
+            (it) => it.width + padding <= sizeLimit && it.height + padding <= sizeLimit
+          );
+        }
+
+        setImages(updatedImages);
+      } catch (err) {
+        console.error('Error applying trim changes:', err);
+        addError('Failed to apply trim changes');
+      }
+    };
+
+    applyTrimChanges();
+    setPrevTrim(trim);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.trim]);
 
   // Auto-pack on images or settings change (debounced)
   const packTimer = useRef(null);
-  const { size, padding, trim } = settings;
+  const { size, atlasWidth: sAW, atlasHeight: sAH, padding, trim, dynamicSizing } = settings;
   useEffect(() => {
     if (packTimer.current) clearTimeout(packTimer.current);
     packTimer.current = setTimeout(() => {
@@ -356,7 +475,7 @@ function App() {
       if (images.length === 0 && mode === 'edit' && existingAtlas) {
         // In edit mode with no new images, just show the existing atlas
         try {
-          const packed = packImages([], size, padding, 4096, 0, existingAtlas);
+          const packed = packImages([], sAW || size, sAH || size, padding, 4096, 0, existingAtlas, settings.dynamicSizing);
           renderAllAtlases(packed);
           setAtlases(packed);
           setActiveAtlasIndex(0);
@@ -367,7 +486,7 @@ function App() {
         return;
       }
       try {
-        const packed = packImages(images, size, padding, 4096, 0, mode === 'edit' ? existingAtlas : null);
+        const packed = packImages(images, sAW || size, sAH || size, padding, 4096, 0, mode === 'edit' ? existingAtlas : null, settings.dynamicSizing);
         renderAllAtlases(packed);
         setAtlases(packed);
         // If we recently added images, try to show the atlas that contains the
@@ -403,7 +522,7 @@ function App() {
       }
     }, 200);
     return () => clearTimeout(packTimer.current);
-  }, [images, size, padding, trim, mode, existingAtlas]);
+  }, [images, size, sAW, sAH, padding, trim, dynamicSizing, mode, existingAtlas]);
 
   const activeAtlas = atlases[activeAtlasIndex];
 
@@ -437,6 +556,29 @@ function App() {
               <span>Edit Existing</span>
             </button>
             <div className={`mode-slider ${mode === 'edit' ? 'right' : ''}`}></div>
+          </div>
+
+          <div className="undo-redo-group">
+            <button
+              className="zoom-btn"
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              title="Undo (Ctrl+Z)"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+              </svg>
+            </button>
+            <button
+              className="zoom-btn"
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              title="Redo (Ctrl+Shift+Z)"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                <path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/>
+              </svg>
+            </button>
           </div>
 
           <button
@@ -505,7 +647,12 @@ function App() {
                 )}
 
                 <ImageUploader onAddImages={handleAddImages} enableTrim={settings.trim} />
-                <ImageList images={images} onRemoveImage={handleRemoveImage} />
+                <ImageList 
+                  images={images} 
+                  onRemoveImage={handleRemoveImage} 
+                  selectedIndex={selectedImageIndex}
+                  onSelectImage={setSelectedImageIndex}
+                />
               </section>
 
               {mode === 'edit' && replaceTarget && (
@@ -605,17 +752,28 @@ function App() {
             <div className="preview-header">
               <h2>Preview</h2>
                 <div className="preview-right">
-                  {activeAtlas ? (
+                  {activeAtlas ? (() => {
+                    const atlasW = activeAtlas.width || activeAtlas.size;
+                    const atlasH = activeAtlas.height || activeAtlas.size;
+                    const usedArea = activeAtlas.placements.reduce((sum, p) => sum + p.width * p.height, 0);
+                    const efficiency = Math.round((usedArea / (atlasW * atlasH)) * 100);
+                    const effClass = efficiency >= 75 ? 'eff-good' : efficiency >= 45 ? 'eff-ok' : 'eff-low';
+                    return (
+                      <div className="preview-meta">
+                        <span className="preview-info">
+                          Atlas {activeAtlasIndex + 1} / {atlases.length} — {atlasW}×{atlasH}
+                        </span>
+                        <span className="preview-divider">|</span>
+                        <span className="preview-subinfo">Padding: {settings.padding}px</span>
+                        <span className="preview-divider">|</span>
+                        <span className={`preview-efficiency ${effClass}`} title="Packed area ÷ total atlas area">
+                          {efficiency}% packed
+                        </span>
+                      </div>
+                    );
+                  })() : (
                     <div className="preview-meta">
-                      <span className="preview-info">
-                        Atlas {activeAtlasIndex + 1} / {atlases.length} — {activeAtlas.size}×{activeAtlas.size}
-                      </span>
-                      <span className="preview-divider">|</span>
-                      <span className="preview-subinfo">Padding: {settings.padding}px</span>
-                    </div>
-                  ) : (
-                    <div className="preview-meta">
-                      <span className="preview-info">Canvas: {settings.size}×{settings.size}</span>
+                      <span className="preview-info">Canvas: {settings.atlasWidth || settings.size}×{settings.atlasHeight || settings.size}</span>
                       <span className="preview-divider">|</span>
                       <span className="preview-subinfo">Padding: {settings.padding}px</span>
                     </div>
@@ -659,7 +817,8 @@ function App() {
             <PreviewCanvas
               atlas={activeAtlas}
               canvasSize={settings.size}
-              selection={selectedPlacement && activeAtlas ? { ...selectedPlacement, size: activeAtlas.size } : null}
+              selection={selectedPlacement && activeAtlas ? { ...selectedPlacement, size: activeAtlas.size, atlasWidth: activeAtlas.width || activeAtlas.size, atlasHeight: activeAtlas.height || activeAtlas.size } : null}
+              onImageClick={handleCanvasImageClick}
             />
             {/* JSON preview sits in the atlas panel on the right now */}
           </div>
@@ -674,6 +833,7 @@ function App() {
                 onSelect={handleSelectPlacement}
                 onDelete={handleDeletePlacement}
                 onReplace={handleReplacePlacement}
+                onRename={handleRenamePlacement}
                 selected={selectedPlacement}
                 mode={mode}
               />

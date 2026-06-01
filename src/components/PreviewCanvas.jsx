@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-export default function PreviewCanvas({ atlas, canvasSize, selection }) {
+export default function PreviewCanvas({ atlas, canvasSize, selection, onImageClick }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [zoom, setZoom] = useState(0.95);
   const MIN_ZOOM = 0.05;
 
@@ -11,32 +10,17 @@ export default function PreviewCanvas({ atlas, canvasSize, selection }) {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
 
-    const size = atlas && atlas.size ? atlas.size : canvasSize || 1024;
-    canvas.width = size;
-    canvas.height = size;
+    const w = (atlas && (atlas.width || atlas.size)) || canvasSize || 1024;
+    const h = (atlas && (atlas.height || atlas.size)) || canvasSize || 1024;
+    canvas.width = w;
+    canvas.height = h;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, w, h);
     if (atlas && atlas.canvas) ctx.drawImage(atlas.canvas, 0, 0);
-    
+
     // Reset pan when atlas changes
     setPan({ x: 0, y: 0 });
   }, [atlas, canvasSize]);
-
-  useEffect(() => {
-    const handler = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
-
-  // Wheel zoom (with prevention of page scroll/zoom)
-  const handleWheel = (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      e.stopPropagation();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom((prev) => Math.min(4, Math.max(MIN_ZOOM, prev + delta)));
-    }
-  };
 
   // Attach a non-passive wheel listener directly to the container to ensure preventDefault works
   useEffect(() => {
@@ -82,6 +66,50 @@ export default function PreviewCanvas({ atlas, canvasSize, selection }) {
         panRef.current.startPanX = panRef.current.currentX;
         panRef.current.startPanY = panRef.current.currentY;
         document.body.classList.add('no-select');
+      }
+      // Left mouse button (0) to select image
+      else if (e.button === 0 && onImageClick && atlas) {
+        const canvasEl = canvasRef.current;
+        const rect = canvasEl.getBoundingClientRect();
+        // Point relative to element's top-left in CSS pixels
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+
+        // The visible transform (pan + scale) is applied to .preview-zoom-layer;
+        // invert its transform matrix to map screen point back to untransformed coords.
+        const zoomLayer = containerRef.current && containerRef.current.querySelector('.preview-zoom-layer');
+        if (zoomLayer) {
+          const style = window.getComputedStyle(zoomLayer);
+          const transform = style.transform;
+          try {
+            if (transform && transform !== 'none') {
+              const m = new DOMMatrix(transform);
+              const inv = m.inverse();
+              const p = new DOMPoint(x, y).matrixTransform(inv);
+              x = p.x;
+              y = p.y;
+            }
+          } catch (err) {
+            // Fall back to basic mapping if matrix inversion fails
+          }
+        }
+
+        // Convert from CSS pixels to canvas pixels (account for CSS scaling)
+        const scaleX = canvasEl.width / rect.width;
+        const scaleY = canvasEl.height / rect.height;
+        const canvasX = x * scaleX;
+        const canvasY = y * scaleY;
+
+        // Check if click is within any placement
+        if (atlas.placements) {
+          for (const placement of atlas.placements) {
+            if (canvasX >= placement.x && canvasX <= placement.x + placement.width &&
+                canvasY >= placement.y && canvasY <= placement.y + placement.height) {
+              onImageClick(placement);
+              break;
+            }
+          }
+        }
       }
     };
 
@@ -155,19 +183,23 @@ export default function PreviewCanvas({ atlas, canvasSize, selection }) {
                 className="preview-canvas"
                 style={{ width: '100%', height: '100%' }}
               />
-              {selection && selection.size ? (
-                <div className="preview-overlay" aria-hidden>
-                  <div
-                    className="preview-selection"
-                    style={{
-                      left: `${(selection.x / selection.size) * 100}%`,
-                      top: `${(selection.y / selection.size) * 100}%`,
-                      width: `${(selection.width / selection.size) * 100}%`,
-                      height: `${(selection.height / selection.size) * 100}%`,
-                    }}
-                  />
-                </div>
-              ) : null}
+              {selection && (selection.atlasWidth || selection.size) ? (() => {
+                const aw = selection.atlasWidth || selection.size;
+                const ah = selection.atlasHeight || selection.size;
+                return (
+                  <div className="preview-overlay" aria-hidden>
+                    <div
+                      className="preview-selection"
+                      style={{
+                        left: `${(selection.x / aw) * 100}%`,
+                        top: `${(selection.y / ah) * 100}%`,
+                        width: `${(selection.width / aw) * 100}%`,
+                        height: `${(selection.height / ah) * 100}%`,
+                      }}
+                    />
+                  </div>
+                );
+              })() : null}
             </div>
           </div>
         </div>

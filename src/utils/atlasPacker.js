@@ -1,117 +1,122 @@
-/**
- * Simple binary tree rectangle packing algorithm
- */
-
-// Node and insertRect were used by the older binary-tree packer.
-// The current implementation uses a shelf-based packing algorithm, so they
-// are no longer necessary and have been removed.
-
-function createEmptyAtlas(size, padding, index) {
+function createEmptyAtlas(width, height, padding, index) {
   return {
     index,
-    size,
+    width,
+    height,
+    size: Math.max(width, height), // backward-compat shorthand
     padding,
     placements: [],
-    // root kept for backward compatibility; not used by current packer
+    freeRects: [],
     root: null,
     canvas: null,
   };
 }
 
 /**
- * Pack images into one or more atlases using optimal repacking when needed
- * @param {Array} images - [{name, img, width, height}]
- * @param {number} atlasSize
- * @param {number} padding
- * @param {number} maxAtlasSize
- * @param {number} attempt
- * @param {Object} existingAtlas - Optional existing atlas with placements to add to
- * @returns {Array} atlases - [{index, size, padding, placements, root, canvas}]
+ * Pack images into one or more atlases.
+ *
+ * Dynamic sizing (when enabled, non-edit only):
+ *   Each atlas grows independently (base → 2x → 4x … up to maxAtlasSize)
+ *   before a new atlas page is created. New pages start at base size again.
+ *
+ * @param {Array}   images        [{name, img, width, height, trimData?}]
+ * @param {number}  atlasWidth    base atlas width
+ * @param {number}  atlasHeight   base atlas height
+ * @param {number}  padding       per-sprite padding (px)
+ * @param {number}  maxAtlasSize  maximum dimension allowed with dynamic sizing
+ * @param {number}  attempt       internal recursion guard (overlap retry)
+ * @param {Object}  existingAtlas optional — existing atlas to append to (edit mode)
+ * @param {boolean} dynamicSizing grow each atlas before creating a new page
+ * @returns {Array} packed atlases
  */
-export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, attempt = 0, existingAtlas = null) {
+export function packImages(
+  images,
+  atlasWidth,
+  atlasHeight,
+  padding,
+  maxAtlasSize = 4096,
+  attempt = 0,
+  existingAtlas = null,
+  dynamicSizing = false,
+) {
   const atlases = [];
   const isEditMode = existingAtlas !== null;
+  const allowDynamic = dynamicSizing && !isEditMode;
 
-  function createFreeRect() {
-    return { x: 0, y: 0, width: atlasSize, height: atlasSize };
+  // ─── geometry helpers ────────────────────────────────────────────────────────
+
+  function rectsIntersect(a, b) {
+    return !(
+      b.x >= a.x + a.width ||
+      b.x + b.width <= a.x ||
+      b.y >= a.y + a.height ||
+      b.y + b.height <= a.y
+    );
   }
 
-  function computeFreeRectsFromPlacements(placements, size, pad) {
-    // Start with entire atlas as free
-    let freeRects = [{ x: 0, y: 0, width: size, height: size }];
+  function pruneContained(rects) {
+    return rects.filter(
+      (a, i) =>
+        !rects.some(
+          (b, j) =>
+            i !== j &&
+            a.x >= b.x &&
+            a.y >= b.y &&
+            a.x + a.width <= b.x + b.width &&
+            a.y + a.height <= b.y + b.height,
+        ),
+    );
+  }
 
-    // For each existing placement, subtract its used area from free rects
-    for (const p of placements) {
-      const usedRect = { x: p.x, y: p.y, width: p.width + pad, height: p.height + pad };
-      const newFreeRects = [];
-
-      for (const fr of freeRects) {
-        if (rectsIntersect(fr, usedRect)) {
-          // Split free rect by used rect
-          if (fr.x < usedRect.x) {
-            newFreeRects.push({ x: fr.x, y: fr.y, width: usedRect.x - fr.x, height: fr.height });
-          }
-          if (fr.x + fr.width > usedRect.x + usedRect.width) {
-            newFreeRects.push({ x: usedRect.x + usedRect.width, y: fr.y, width: (fr.x + fr.width) - (usedRect.x + usedRect.width), height: fr.height });
-          }
-          if (fr.y < usedRect.y) {
-            newFreeRects.push({ x: fr.x, y: fr.y, width: fr.width, height: usedRect.y - fr.y });
-          }
-          if (fr.y + fr.height > usedRect.y + usedRect.height) {
-            newFreeRects.push({ x: fr.x, y: usedRect.y + usedRect.height, width: fr.width, height: (fr.y + fr.height) - (usedRect.y + usedRect.height) });
-          }
-        } else {
-          newFreeRects.push(fr);
-        }
-      }
-
-      // Prune contained rects
-      freeRects = [];
-      for (let i = 0; i < newFreeRects.length; i++) {
-        const a = newFreeRects[i];
-        let isContained = false;
-        for (let j = 0; j < newFreeRects.length; j++) {
-          if (i === j) continue;
-          const b = newFreeRects[j];
-          if (a.x >= b.x && a.y >= b.y && a.x + a.width <= b.x + b.width && a.y + a.height <= b.y + b.height) {
-            isContained = true;
-            break;
-          }
-        }
-        if (!isContained) freeRects.push(a);
+  function splitFreeRects(freeRects, usedRect) {
+    const next = [];
+    for (const fr of freeRects) {
+      if (rectsIntersect(fr, usedRect)) {
+        if (fr.x < usedRect.x)
+          next.push({ x: fr.x, y: fr.y, width: usedRect.x - fr.x, height: fr.height });
+        if (fr.x + fr.width > usedRect.x + usedRect.width)
+          next.push({ x: usedRect.x + usedRect.width, y: fr.y, width: fr.x + fr.width - (usedRect.x + usedRect.width), height: fr.height });
+        if (fr.y < usedRect.y)
+          next.push({ x: fr.x, y: fr.y, width: fr.width, height: usedRect.y - fr.y });
+        if (fr.y + fr.height > usedRect.y + usedRect.height)
+          next.push({ x: fr.x, y: usedRect.y + usedRect.height, width: fr.width, height: fr.y + fr.height - (usedRect.y + usedRect.height) });
+      } else {
+        next.push(fr);
       }
     }
+    return pruneContained(next);
+  }
 
+  // Rebuild free rects from scratch given a list of already-placed sprites.
+  function computeFreeRectsFromPlacements(placements, w, h) {
+    let freeRects = [{ x: 0, y: 0, width: w, height: h }];
+    for (const p of placements) {
+      const used = { x: p.x, y: p.y, width: p.width + padding, height: p.height + padding };
+      freeRects = splitFreeRects(freeRects, used);
+    }
     return freeRects;
   }
 
-  function rectsIntersect(a, b) {
-    return !(b.x >= a.x + a.width || b.x + b.width <= a.x || b.y >= a.y + a.height || b.y + b.height <= a.y);
-  }
+  // ─── placement ───────────────────────────────────────────────────────────────
 
+  // Returns true and mutates atlas on success; returns false if no room.
   function tryPlaceInAtlas(atlas, img) {
-    const requiredWidth = img.width + padding;
-    const requiredHeight = img.height + padding;
+    const reqW = img.width + padding;
+    const reqH = img.height + padding;
+    if (reqW > atlas.width || reqH > atlas.height) return false;
 
-    if (requiredWidth > atlasSize || requiredHeight > atlasSize) {
-      throw new Error(`Image "${img.name}" (${img.width}x${img.height}) is too large for the selected atlas size ${atlasSize}x${atlasSize} with padding ${padding}.`);
-    }
-
-    // Find all candidate free rects and sort by: top-left preference (y, x), then best short side fit
     const candidates = [];
-    for (let i = 0; i < atlas.freeRects.length; i++) {
-      const r = atlas.freeRects[i];
-      if (requiredWidth <= r.width && requiredHeight <= r.height) {
-        const leftoverHoriz = r.width - requiredWidth;
-        const leftoverVert = r.height - requiredHeight;
-        const shortSideFit = Math.min(leftoverHoriz, leftoverVert);
-        const longSideFit = Math.max(leftoverHoriz, leftoverVert);
-        candidates.push({ i, r, y: r.y, x: r.x, shortSideFit, longSideFit });
+    for (const r of atlas.freeRects) {
+      if (reqW <= r.width && reqH <= r.height) {
+        candidates.push({
+          r, x: r.x, y: r.y,
+          shortSideFit: Math.min(r.width - reqW, r.height - reqH),
+          longSideFit:  Math.max(r.width - reqW, r.height - reqH),
+        });
       }
     }
     if (candidates.length === 0) return false;
 
-    // Sort: prefer top-left, then best short side fit, then best long side fit
     candidates.sort((a, b) => {
       if (a.y !== b.y) return a.y - b.y;
       if (a.x !== b.x) return a.x - b.x;
@@ -119,248 +124,145 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
       return a.longSideFit - b.longSideFit;
     });
 
-    // Try the first candidate
-    const chosen = candidates[0];
-    const placedX = chosen.r.x;
-    const placedY = chosen.r.y;
-    const usedRect = { x: placedX, y: placedY, width: requiredWidth, height: requiredHeight };
+    const { x: px, y: py } = candidates[0];
+    const used = { x: px, y: py, width: reqW, height: reqH };
 
-    // Verify no overlap with existing placements (safety check)
+    // Safety overlap check
     for (const p of atlas.placements) {
-      const pUsed = { x: p.x, y: p.y, width: p.width + padding, height: p.height + padding };
-      if (rectsIntersect(pUsed, usedRect)) {
-        return false; // shouldn't happen if free rects are maintained correctly
-      }
+      if (rectsIntersect({ x: p.x, y: p.y, width: p.width + padding, height: p.height + padding }, used))
+        return false;
     }
 
-    // Place the image
-    atlas.placements.push({ 
-      name: img.name, 
-      x: placedX, 
-      y: placedY, 
-      width: img.width, 
-      height: img.height, 
+    atlas.placements.push({
+      name: img.name,
+      x: px, y: py,
+      width: img.width, height: img.height,
       img: img.img,
       trimData: img.trimData || null,
     });
-
-    // Update free rects: split all overlapping rects by the used rect
-    const newFreeRects = [];
-    for (const fr of atlas.freeRects) {
-      if (rectsIntersect(fr, usedRect)) {
-        // Split this free rect into up to 4 new free rects (left, right, top, bottom of the used rect)
-        // Left
-        if (fr.x < usedRect.x) {
-          newFreeRects.push({ x: fr.x, y: fr.y, width: usedRect.x - fr.x, height: fr.height });
-        }
-        // Right
-        if (fr.x + fr.width > usedRect.x + usedRect.width) {
-          newFreeRects.push({ x: usedRect.x + usedRect.width, y: fr.y, width: (fr.x + fr.width) - (usedRect.x + usedRect.width), height: fr.height });
-        }
-        // Top
-        if (fr.y < usedRect.y) {
-          newFreeRects.push({ x: fr.x, y: fr.y, width: fr.width, height: usedRect.y - fr.y });
-        }
-        // Bottom
-        if (fr.y + fr.height > usedRect.y + usedRect.height) {
-          newFreeRects.push({ x: fr.x, y: usedRect.y + usedRect.height, width: fr.width, height: (fr.y + fr.height) - (usedRect.y + usedRect.height) });
-        }
-      } else {
-        // No overlap - keep the free rect
-        newFreeRects.push(fr);
-      }
-    }
-
-    // Prune contained rects (remove any rect that is fully contained by another)
-    atlas.freeRects = [];
-    for (let i = 0; i < newFreeRects.length; i++) {
-      const a = newFreeRects[i];
-      let isContained = false;
-      for (let j = 0; j < newFreeRects.length; j++) {
-        if (i === j) continue;
-        const b = newFreeRects[j];
-        // Check if a is fully contained in b
-        if (a.x >= b.x && a.y >= b.y && a.x + a.width <= b.x + b.width && a.y + a.height <= b.y + b.height) {
-          isContained = true;
-          break;
-        }
-      }
-      if (!isContained) atlas.freeRects.push(a);
-    }
-
+    atlas.freeRects = splitFreeRects(atlas.freeRects, used);
     return true;
   }
 
-  /**
-   * Pack a set of images optimally into atlases from scratch
-   * Uses area-descending sort for better packing efficiency
-   */
-  function packOptimally(allImages) {
-    // Sort by area descending for better packing
-    const sorted = [...allImages].sort((a, b) => (b.width * b.height) - (a.width * a.height));
-    
-    const optimalAtlases = [];
-    
-    for (const img of sorted) {
-      if (img.width + padding > atlasSize || img.height + padding > atlasSize) {
-        throw new Error(`Image "${img.name}" (${img.width}x${img.height}) is too large for the selected atlas size ${atlasSize}x${atlasSize} with padding ${padding}.`);
-      }
+  // ─── dynamic growing ─────────────────────────────────────────────────────────
 
-      let placed = false;
-      for (const atlas of optimalAtlases) {
-        if (tryPlaceInAtlas(atlas, img)) {
-          placed = true;
-          break;
-        }
-      }
-
-      if (!placed) {
-        const newAtlas = createEmptyAtlas(atlasSize, padding, optimalAtlases.length);
-        newAtlas.freeRects = [createFreeRect()];
-        newAtlas.placements = [];
-        if (!tryPlaceInAtlas(newAtlas, img)) {
-          throw new Error(`Failed to place image '${img.name}' in a fresh atlas`);
-        }
-        optimalAtlases.push(newAtlas);
-      }
+  // Create a new atlas object with larger dimensions, recomputing free rects from existing placements.
+  function growAtlasTo(atlas, newW, newH) {
+    const grown = createEmptyAtlas(newW, newH, padding, atlas.index);
+    grown.placements = [...atlas.placements];
+    grown.freeRects = computeFreeRectsFromPlacements(atlas.placements, newW, newH);
+    if (atlas.isEditing) {
+      grown.isEditing = true;
+      grown.baseImage = atlas.baseImage;
+      grown.removedRegions = [...(atlas.removedRegions || [])];
     }
-    
-    return optimalAtlases;
+    return grown;
   }
 
-  // If editing an existing atlas, initialize with existing placements
+  // Grow atlas at atlases[idx] step-by-step (doubling) until img fits or maxAtlasSize is reached.
+  // Restores the original atlas if no size could accommodate the image.
+  function tryGrowAndPlace(atlasesArr, idx, img) {
+    const original = atlasesArr[idx];
+    let curW = original.width;
+    let curH = original.height;
+
+    while (curW < maxAtlasSize || curH < maxAtlasSize) {
+      const newW = Math.min(curW * 2, maxAtlasSize);
+      const newH = Math.min(curH * 2, maxAtlasSize);
+      atlasesArr[idx] = growAtlasTo(atlasesArr[idx], newW, newH);
+      if (tryPlaceInAtlas(atlasesArr[idx], img)) return true;
+      curW = newW;
+      curH = newH;
+    }
+
+    // Growing to max didn't help — restore and let caller create a new atlas
+    atlasesArr[idx] = original;
+    return false;
+  }
+
+  // ─── edit mode init ──────────────────────────────────────────────────────────
+
   if (existingAtlas) {
-    const editAtlas = createEmptyAtlas(atlasSize, padding, 0);
+    const editAtlas = createEmptyAtlas(atlasWidth, atlasHeight, padding, 0);
     editAtlas.placements = [...existingAtlas.placements];
-    editAtlas.freeRects = computeFreeRectsFromPlacements(existingAtlas.placements, atlasSize, padding);
+    editAtlas.freeRects = computeFreeRectsFromPlacements(existingAtlas.placements, atlasWidth, atlasHeight);
     editAtlas.isEditing = true;
     editAtlas.baseImage = existingAtlas.img;
     editAtlas.removedRegions = existingAtlas.removedRegions ? [...existingAtlas.removedRegions] : [];
     atlases.push(editAtlas);
   }
 
-  // First pass: try to place images incrementally
-  let needsRepack = false;
-  const unplacedImages = [];
+  // ─── main packing loop ───────────────────────────────────────────────────────
 
   for (const img of images) {
-    // Check if image is oversized vs atlasSize
-    if (img.width + padding > atlasSize || img.height + padding > atlasSize) {
-      throw new Error(`Image "${img.name}" (${img.width}x${img.height}) is too large for the selected atlas size ${atlasSize}x${atlasSize} with padding ${padding}.`);
+    const reqW = img.width + padding;
+    const reqH = img.height + padding;
+
+    // Hard reject: too large even for the maximum possible atlas
+    const limitW = allowDynamic ? maxAtlasSize : atlasWidth;
+    const limitH = allowDynamic ? maxAtlasSize : atlasHeight;
+    if (reqW > limitW || reqH > limitH) {
+      throw new Error(
+        `Image "${img.name}" (${img.width}×${img.height}) is too large for atlas ${limitW}×${limitH} with padding ${padding}.`,
+      );
     }
 
-    // Try to place into existing atlases
     let placed = false;
-    for (const atlas of atlases) {
-      if (tryPlaceInAtlas(atlas, img)) {
-        placed = true;
-        break;
-      }
+
+    // 1. Try every existing atlas at its current size (no growth yet)
+    for (let ai = 0; ai < atlases.length && !placed; ai++) {
+      if (tryPlaceInAtlas(atlases[ai], img)) placed = true;
     }
 
-    if (!placed) {
-      unplacedImages.push(img);
-    }
-  }
-
-  // If we have unplaced images in create mode, try optimal repacking
-  if (unplacedImages.length > 0 && !isEditMode && attempt < 2) {
-    // Collect all images (already placed + unplaced) for optimal repacking
-    const allImages = [];
-    
-    // Get images from current atlases
-    for (const atlas of atlases) {
-      for (const p of atlas.placements) {
-        if (p.img) { // Only include images that have actual image data (not existing placements from edit mode)
-          allImages.push({
-            name: p.name,
-            img: p.img,
-            width: p.width,
-            height: p.height,
-            trimData: p.trimData,
-          });
+    // 2. If still unplaced, try growing existing atlases (most-recent first)
+    //    — only in non-edit mode with dynamic sizing on
+    if (!placed && allowDynamic) {
+      for (let ai = atlases.length - 1; ai >= 0 && !placed; ai--) {
+        if (atlases[ai].width < maxAtlasSize || atlases[ai].height < maxAtlasSize) {
+          if (tryGrowAndPlace(atlases, ai, img)) placed = true;
         }
       }
     }
-    
-    // Add unplaced images
-    allImages.push(...unplacedImages);
-    
-    // Try optimal repacking
-    try {
-      const optimalResult = packOptimally(allImages);
-      
-      // Check if optimal packing uses fewer or equal atlases
-      if (optimalResult.length <= atlases.length + Math.ceil(unplacedImages.length / 10)) {
-        // Use the optimal result
-        return optimalResult.map((a, i) => ({
-          ...a,
-          index: i,
-          root: null,
-          canvas: null,
-        }));
-      }
-    } catch (e) {
-      // Optimal packing failed, continue with incremental approach
-      console.warn('Optimal repacking failed, using incremental approach:', e.message);
-    }
-  }
 
-  // Incremental placement for remaining unplaced images
-  for (const img of unplacedImages) {
-    // Try to place into existing atlases one more time
-    let placed = false;
-    for (const atlas of atlases) {
-      if (tryPlaceInAtlas(atlas, img)) {
-        placed = true;
-        break;
-      }
-    }
-
+    // 3. Create a new atlas page at base size (scaled up if needed to fit this image)
     if (!placed) {
-      // Create a new atlas and place at 0,0
-      const newAtlas = createEmptyAtlas(atlasSize, padding, atlases.length);
-      newAtlas.freeRects = [createFreeRect()];
-      newAtlas.placements = [];
-      if (!tryPlaceInAtlas(newAtlas, img)) {
-        // Shouldn't happen since we checked oversize earlier
-        throw new Error(`Failed to place image '${img.name}' in a fresh atlas`);
+      let startW = atlasWidth;
+      let startH = atlasHeight;
+      if (allowDynamic) {
+        while (startW < reqW && startW < maxAtlasSize) startW = Math.min(startW * 2, maxAtlasSize);
+        while (startH < reqH && startH < maxAtlasSize) startH = Math.min(startH * 2, maxAtlasSize);
       }
+      const newAtlas = createEmptyAtlas(startW, startH, padding, atlases.length);
+      newAtlas.freeRects = [{ x: 0, y: 0, width: startW, height: startH }];
       atlases.push(newAtlas);
+      if (!tryPlaceInAtlas(atlases[atlases.length - 1], img)) {
+        atlases.pop();
+        throw new Error(`Failed to place image '${img.name}' in a fresh ${startW}×${startH} atlas`);
+      }
     }
   }
 
-  // For backward compatibility keep root/canvas keys
+  // ─── finalise ────────────────────────────────────────────────────────────────
+
   for (const a of atlases) {
-    if (!a.freeRects) a.freeRects = [createFreeRect()];
-    if (!a.placements) a.placements = [];
     a.root = null;
     a.canvas = null;
   }
 
-  // Post-check: ensure no overlapping placements — if found, try a fallback repack (sort by area desc)
-  function checkOverlaps(atlasesToCheck) {
-    for (const a of atlasesToCheck) {
+  // Overlap post-check — if overlaps detected, retry with area-sorted input
+  function checkOverlaps() {
+    for (const a of atlases) {
       for (let i = 0; i < a.placements.length; i++) {
         for (let j = i + 1; j < a.placements.length; j++) {
           const p1 = a.placements[i];
           const p2 = a.placements[j];
-
-          // If these placements are *exact* duplicates (same region but different names),
-          // treat them as aliases rather than an overlapping error — skip the check.
           if (
-            p1.x === p2.x &&
-            p1.y === p2.y &&
-            p1.width === p2.width &&
-            p1.height === p2.height
+            p1.x === p2.x && p1.y === p2.y &&
+            p1.width === p2.width && p1.height === p2.height
           ) {
-            // For diagnostics, attach a note to the atlas (non-fatal)
-            a.note = a.note || '';
-            a.note += `Duplicate frames detected: "${p1.name}" and "${p2.name}" at (${p1.x},${p1.y}) ` +
-                      `size ${p1.width}×${p1.height}.\n`;
+            a.note = (a.note || '') + `Duplicate frames: "${p1.name}" & "${p2.name}" at (${p1.x},${p1.y}).\n`;
             continue;
           }
-
           const r1 = { x: p1.x, y: p1.y, width: p1.width + padding, height: p1.height + padding };
           const r2 = { x: p2.x, y: p2.y, width: p2.width + padding, height: p2.height + padding };
           if (rectsIntersect(r1, r2)) return true;
@@ -370,15 +272,9 @@ export function packImages(images, atlasSize, padding, maxAtlasSize = 4096, atte
     return false;
   }
 
-  if (checkOverlaps(atlases)) {
-    // Try fallback: pack larger sprites first (area desc) to reduce fragmentation
-    const imagesSorted = [...images].sort((a, b) => b.width * b.height - a.width * a.height);
-    if (imagesSorted.length !== images.length) return atlases; // should not happen
-    if (attempt >= 2) {
-      throw new Error('Packing failed: overlapping placements detected even after fallback sorting');
-    }
-    // Recreate atlas by calling packImages recursively with sorted images but avoid infinite recursion
-    return packImages(imagesSorted, atlasSize, padding, maxAtlasSize, attempt + 1, existingAtlas);
+  if (checkOverlaps() && attempt < 2) {
+    const sorted = [...images].sort((a, b) => b.width * b.height - a.width * a.height);
+    return packImages(sorted, atlasWidth, atlasHeight, padding, maxAtlasSize, attempt + 1, existingAtlas, dynamicSizing);
   }
 
   return atlases;

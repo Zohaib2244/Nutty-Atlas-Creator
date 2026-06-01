@@ -74,8 +74,8 @@ export default function AtlasUploader({ onAtlasLoad }) {
       const pngUrl = URL.createObjectURL(pngFile);
       const img = new Image();
       await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = () => reject(new Error('Failed to load PNG'));
+        img.onload = () => { URL.revokeObjectURL(pngUrl); resolve(); };
+        img.onerror = () => { URL.revokeObjectURL(pngUrl); reject(new Error('Failed to load PNG')); };
         img.src = pngUrl;
       });
 
@@ -103,17 +103,20 @@ export default function AtlasUploader({ onAtlasLoad }) {
         }
       }
 
-      // Determine atlas size from meta or image dimensions
-      let atlasSize = img.width;
+      // Determine atlas dimensions from meta or image dimensions
+      let atlasWidth = img.width;
+      let atlasHeight = img.height;
       if (jsonData.meta?.size) {
-        atlasSize = jsonData.meta.size.w;
+        atlasWidth = jsonData.meta.size.w;
+        atlasHeight = jsonData.meta.size.h || jsonData.meta.size.w;
       }
 
       onAtlasLoad({
         img,
-        imgUrl: pngUrl,
         placements,
-        atlasSize,
+        atlasSize: atlasWidth, // backward compat
+        atlasWidth,
+        atlasHeight,
         padding: jsonData.meta?.padding || 0,
         originalJson: jsonData,
         sourcePngName: pngFile.name,
